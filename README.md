@@ -87,6 +87,34 @@ cargo test  --manifest-path rust/Cargo.toml --lib   # host smoke test
 > in `rust/Cargo.toml` (`opt-level=s`, `lto`, `strip`) shrinks release builds by
 > an order of magnitude; Flutter release builds use it automatically.
 
+## Release builds & FFI symbol stripping
+
+In release, Xcode enables Dead Code Stripping (`-dead_strip`). The FFI entry
+points (`frbgen_sage_flutter_binding_*`) are only ever resolved via
+`dart:ffi` `lookup()` at runtime — never referenced from Swift/ObjC — so this
+is a legitimate concern. It is **safe with the standard setup** because the
+plugin links as a *dynamic* framework
+(`Runner.app/Frameworks/sage_flutter_binding.framework`): a dylib keeps all
+exported symbols by design, so `-dead_strip` cannot remove them. Combined with
+`-force_load` (podspec) and Rust `#[no_mangle] pub extern "C"`, the symbols are
+guaranteed.
+
+Flutter does **not** support `--release` on the iOS simulator, so verify on a
+device build:
+
+```bash
+cd example && flutter build ios --release --no-codesign
+FW=build/ios/iphoneos/Runner.app/Frameworks/sage_flutter_binding.framework/sage_flutter_binding
+nm -gU "$FW" | grep frbgen_sage_flutter_binding          # defined & exported
+xcrun dyld_info -exports "$FW" | grep frbgen_sage_flutter_binding  # in export trie
+```
+
+Caveat: if a consuming app forces **static** linkage
+(`use_frameworks! :linkage => :static` or a static podspec), the Rust code is
+linked into the app executable, where exported symbols are *not* dead-strip
+roots. The `-force_load` in the podspec covers this, but test that path
+explicitly if you use it.
+
 ## Regenerating bindings
 
 Only needed if you change the public Rust API in `rust/src/api/`:
