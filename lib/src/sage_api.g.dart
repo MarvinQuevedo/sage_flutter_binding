@@ -22,6 +22,19 @@ enum AddressKind {
   String toJson() => value;
 }
 
+enum AssetCoinType {
+  cat('cat'),
+  did('did'),
+  nft('nft');
+
+  const AssetCoinType(this.value);
+  final String value;
+
+  factory AssetCoinType.fromJson(String v) =>
+      AssetCoinType.values.firstWhere((e) => e.value == v);
+  String toJson() => value;
+}
+
 enum AssetKind {
   token('token'),
   nft('nft'),
@@ -765,6 +778,36 @@ class CheckAddressResponse {
   Map<String, dynamic> toJson() => {'valid': valid};
 }
 
+/// Coin structure
+class Coin {
+  Coin({
+    required this.amount,
+    required this.parentCoinInfo,
+    required this.puzzleHash,
+  });
+
+  /// Amount in mojos
+  final int amount;
+
+  /// Parent coin info
+  final String parentCoinInfo;
+
+  /// Puzzle hash
+  final String puzzleHash;
+
+  factory Coin.fromJson(Map<String, dynamic> json) => Coin(
+    amount: json['amount'] as int,
+    parentCoinInfo: json['parent_coin_info'] as String,
+    puzzleHash: json['puzzle_hash'] as String,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'amount': amount,
+    'parent_coin_info': parentCoinInfo,
+    'puzzle_hash': puzzleHash,
+  };
+}
+
 class CoinJson {
   CoinJson({
     required this.amount,
@@ -865,6 +908,36 @@ class CoinRecord {
     if (spentHeight != null) 'spent_height': spentHeight,
     if (spentTimestamp != null) 'spent_timestamp': spentTimestamp,
     if (transactionId != null) 'transaction_id': transactionId,
+  };
+}
+
+/// Coin spend structure
+class CoinSpend {
+  CoinSpend({
+    required this.coin,
+    required this.puzzleReveal,
+    required this.solution,
+  });
+
+  /// Coin being spent
+  final Coin coin;
+
+  /// Puzzle reveal
+  final String puzzleReveal;
+
+  /// Solution
+  final String solution;
+
+  factory CoinSpend.fromJson(Map<String, dynamic> json) => CoinSpend(
+    coin: Coin.fromJson((json['coin'] as Map).cast<String, dynamic>()),
+    puzzleReveal: json['puzzle_reveal'] as String,
+    solution: json['solution'] as String,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'coin': coin.toJson(),
+    'puzzle_reveal': puzzleReveal,
+    'solution': solution,
   };
 }
 
@@ -1445,9 +1518,7 @@ class GetAssetCoins {
     offset: json['offset'] == null ? null : (json['offset'] as int),
     type: json['type'] == null
         ? null
-        : (AssetCoinType.fromJson(
-            (json['type'] as Map).cast<String, dynamic>(),
-          )),
+        : (AssetCoinType.fromJson(json['type'] as String)),
   );
 
   Map<String, dynamic> toJson() => {
@@ -3052,6 +3123,36 @@ class KeyInfo {
     'name': name,
     'network_id': networkId,
     'public_key': publicKey,
+  };
+}
+
+/// Lineage proof for CAT coins
+class LineageProof {
+  LineageProof({this.amount, this.innerPuzzleHash, this.parentName});
+
+  /// Amount
+  final int? amount;
+
+  /// Inner puzzle hash
+  final String? innerPuzzleHash;
+
+  /// Parent coin name
+  final String? parentName;
+
+  factory LineageProof.fromJson(Map<String, dynamic> json) => LineageProof(
+    amount: json['amount'] == null ? null : (json['amount'] as int),
+    innerPuzzleHash: json['innerPuzzleHash'] == null
+        ? null
+        : (json['innerPuzzleHash'] as String),
+    parentName: json['parentName'] == null
+        ? null
+        : (json['parentName'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (amount != null) 'amount': amount,
+    if (innerPuzzleHash != null) 'innerPuzzleHash': innerPuzzleHash,
+    if (parentName != null) 'parentName': parentName,
   };
 }
 
@@ -4989,6 +5090,29 @@ class SignMessageWithPublicKeyResponse {
   Map<String, dynamic> toJson() => {'signature': signature};
 }
 
+/// Spend bundle structure
+class SpendBundle {
+  SpendBundle({required this.aggregatedSignature, required this.coinSpends});
+
+  /// Aggregated signature
+  final String aggregatedSignature;
+
+  /// Coin spends in the bundle
+  final List<CoinSpend> coinSpends;
+
+  factory SpendBundle.fromJson(Map<String, dynamic> json) => SpendBundle(
+    aggregatedSignature: json['aggregated_signature'] as String,
+    coinSpends: ((json['coin_spends']) as List)
+        .map((e) => CoinSpend.fromJson((e as Map).cast<String, dynamic>()))
+        .toList(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'aggregated_signature': aggregatedSignature,
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+  };
+}
+
 class SpendBundleJson {
   SpendBundleJson({
     required this.aggregatedSignature,
@@ -5012,6 +5136,57 @@ class SpendBundleJson {
   Map<String, dynamic> toJson() => {
     'aggregated_signature': aggregatedSignature,
     'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+  };
+}
+
+/// Spendable coin details
+class SpendableCoin {
+  SpendableCoin({
+    required this.coin,
+    required this.coinName,
+    required this.confirmedBlockIndex,
+    this.lineageProof,
+    required this.locked,
+    required this.puzzle,
+  });
+
+  /// Coin information
+  final Coin coin;
+
+  /// Coin name (ID)
+  final String coinName;
+
+  /// Block height where coin was confirmed
+  final int confirmedBlockIndex;
+
+  final LineageProof? lineageProof;
+
+  /// Whether the coin is locked
+  final bool locked;
+
+  /// Puzzle reveal
+  final String puzzle;
+
+  factory SpendableCoin.fromJson(Map<String, dynamic> json) => SpendableCoin(
+    coin: Coin.fromJson((json['coin'] as Map).cast<String, dynamic>()),
+    coinName: json['coinName'] as String,
+    confirmedBlockIndex: json['confirmedBlockIndex'] as int,
+    lineageProof: json['lineageProof'] == null
+        ? null
+        : (LineageProof.fromJson(
+            (json['lineageProof'] as Map).cast<String, dynamic>(),
+          )),
+    locked: json['locked'] as bool,
+    puzzle: json['puzzle'] as String,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'coin': coin.toJson(),
+    'coinName': coinName,
+    'confirmedBlockIndex': confirmedBlockIndex,
+    if (lineageProof != null) 'lineageProof': lineageProof!.toJson(),
+    'locked': locked,
+    'puzzle': puzzle,
   };
 }
 
@@ -7029,7 +7204,7 @@ const List<SageEndpoint> kSageEndpoints = [
     'send_transaction_immediately',
     'WalletConnect',
     'Send a transaction immediately',
-    '{"spend_bundle": null}',
+    '{"spend_bundle": {"aggregated_signature": "", "coin_spends": []}}',
   ),
   SageEndpoint(
     'send_xch',

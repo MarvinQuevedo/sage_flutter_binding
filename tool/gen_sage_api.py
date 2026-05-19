@@ -108,7 +108,12 @@ class Gen:
                 return ref, False, "enum"
             if ref in self.raw:
                 return "Map<String, dynamic>", False, "raw"
-            return ref, False, "class"
+            if ref in self.classes:
+                return ref, False, "class"
+            # $ref to a schema not present in components (e.g. a nested type
+            # that was never registered): degrade to a raw map instead of
+            # emitting a reference to an undefined Dart class.
+            return "Map<String, dynamic>", False, "raw"
 
         if "oneOf" in node:
             inner = self._nullable_ref(node)

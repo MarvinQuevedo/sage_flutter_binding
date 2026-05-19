@@ -10,7 +10,7 @@ final res = await sage.api.generateMnemonic(GenerateMnemonic(use24Words: true));
 print(res.mnemonic);
 ```
 
-**105 endpoints**, 219 models, 11 enums.
+**105 endpoints**, 224 models, 12 enums.
 
 ## Endpoints
 
