@@ -68,6 +68,11 @@ Sage's own mobile CI):
    (see [`tool/android_env.sh`](tool/android_env.sh)).
 4. `SQLX_OFFLINE=true` + vendored `.sqlx/` so `sqlx` needs no live database.
 5. `specta` pinned to Sage's tested `2.0.0-rc.22` (newer rc needs nightly).
+6. `aws-lc-sys` runs `bindgen` (libclang) **directly**, bypassing the `cc`
+   crate, so it never gets the Android `--target`/`--sysroot` and fails with
+   `'stdlib.h' file not found`. `tool/android_env.sh` also exports
+   `BINDGEN_EXTRA_CLANG_ARGS_<triple>` (NDK sysroot + target, per ABI) —
+   Cargokit does **not** set this, so the script must be sourced first.
 
 Status: **host ✅, `aarch64-linux-android` ✅, `aarch64-apple-ios` ✅**, and a
 host smoke test exercises the full JSON dispatch path.
@@ -76,18 +81,33 @@ host smoke test exercises the full JSON dispatch path.
 
 - Rust + targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
 - `cargo install bindgen-cli --locked`
-- Android NDK **26.3.11579264** (r26d); Xcode for iOS
+- Android NDK **26.3.11579264** (r26d) for the Rust crate; the **example app
+  also needs r28 `28.2.13676358`** because Flutter's NDK gate picks the highest
+  version any plugin requires (`integration_test`/`jni` need r28). Xcode for iOS.
 - `flutter_rust_bridge_codegen` 2.11.1 (only if you change the Rust API)
 
 ## Build & run
 
-```bash
-# Android (env script sets NDK + per-target C toolchain)
-source tool/android_env.sh
-(cd example && flutter run)            # device/emulator
+**Android — always launch through the wrapper.** It sources the toolchain env
+(NDK sysroot, per-target C toolchain, bindgen `--sysroot`) with the NDK the
+example app's Flutter gate requires, then `flutter run`s in the same process,
+so Cargokit/Gradle always inherit it. This is the supported path — running
+`flutter run` directly without the env is what produces
+`'stdlib.h' file not found`.
 
-# iOS
-(cd example && flutter run)            # device/simulator
+```bash
+tool/run_android.sh                 # device/emulator (run from anywhere)
+tool/run_android.sh --clean         # also stop stale Gradle daemons first
+tool/run_android.sh -d <device-id>  # extra args pass through to flutter run
+```
+
+Use `--clean` if you previously built without the env: a Gradle daemon
+started in a plain shell gets reused and still fails with
+`'stdlib.h' file not found` until it's stopped.
+
+```bash
+# iOS — no env needed
+(cd example && flutter run)         # device/simulator
 ```
 
 Verify the cross-compiles directly:

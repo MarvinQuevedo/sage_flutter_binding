@@ -2861,6 +2861,7 @@ class GetVersionResponse {
 /// Import a wallet key
 class ImportKey {
   ImportKey({
+    this.arborOnly,
     this.derivationIndex,
     this.emoji,
     this.hardened,
@@ -2870,6 +2871,13 @@ class ImportKey {
     this.saveSecrets,
     this.unhardened,
   });
+
+  /// External-signer wallet (e.g. Tangem card): `key` must be a BLS public
+  /// key. Creates exactly one `p2_delegated_conditions` ("arbor") puzzle and
+  /// NO HD derivations (`derivation_index`/`hardened`/`unhardened` ignored).
+  /// Spends are built unsigned; sign with `required_signatures` +
+  /// `submit_with_signatures`.
+  final bool? arborOnly;
 
   /// Starting derivation index
   final int? derivationIndex;
@@ -2896,6 +2904,7 @@ class ImportKey {
   final bool? unhardened;
 
   factory ImportKey.fromJson(Map<String, dynamic> json) => ImportKey(
+    arborOnly: json['arbor_only'] == null ? null : (json['arbor_only'] as bool),
     derivationIndex: json['derivation_index'] == null
         ? null
         : (json['derivation_index'] as int),
@@ -2913,6 +2922,7 @@ class ImportKey {
   );
 
   Map<String, dynamic> toJson() => {
+    if (arborOnly != null) 'arbor_only': arborOnly,
     if (derivationIndex != null) 'derivation_index': derivationIndex,
     if (emoji != null) 'emoji': emoji,
     if (hardened != null) 'hardened': hardened,
@@ -3082,6 +3092,7 @@ class IssueCat {
 
 class KeyInfo {
   KeyInfo({
+    this.arborOnly,
     this.emoji,
     required this.fingerprint,
     required this.hasSecrets,
@@ -3090,6 +3101,11 @@ class KeyInfo {
     required this.networkId,
     required this.publicKey,
   });
+
+  /// External-signer ("arbor"/Tangem) wallet: only a public key, exactly
+  /// one `p2_delegated_conditions` puzzle, no HD derivations. Spends must
+  /// be built unsigned and signed off-device.
+  final bool? arborOnly;
 
   final String? emoji;
 
@@ -3106,6 +3122,7 @@ class KeyInfo {
   final String publicKey;
 
   factory KeyInfo.fromJson(Map<String, dynamic> json) => KeyInfo(
+    arborOnly: json['arbor_only'] == null ? null : (json['arbor_only'] as bool),
     emoji: json['emoji'] == null ? null : (json['emoji'] as String),
     fingerprint: json['fingerprint'] as int,
     hasSecrets: json['has_secrets'] as bool,
@@ -3116,6 +3133,7 @@ class KeyInfo {
   );
 
   Map<String, dynamic> toJson() => {
+    if (arborOnly != null) 'arbor_only': arborOnly,
     if (emoji != null) 'emoji': emoji,
     'fingerprint': fingerprint,
     'has_secrets': hasSecrets,
@@ -4463,6 +4481,74 @@ class RenameKeyResponse {
   Map<String, dynamic> toJson() => {};
 }
 
+/// A single BLS signature that an external signer (e.g. a Tangem card) must
+/// produce for a set of coin spends. `message` is the exact, consensus-correct
+/// AGG_SIG_* message; the signer signs it with the key identified by
+/// `public_key`, and the resulting signatures are aggregated back via
+/// `submit_with_signatures`.
+class RequiredSignatureJson {
+  RequiredSignatureJson({required this.message, required this.publicKey});
+
+  final String message;
+
+  final String publicKey;
+
+  factory RequiredSignatureJson.fromJson(Map<String, dynamic> json) =>
+      RequiredSignatureJson(
+        message: json['message'] as String,
+        publicKey: json['public_key'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'message': message,
+    'public_key': publicKey,
+  };
+}
+
+/// Compute the BLS signatures an external signer must produce
+class RequiredSignatures {
+  RequiredSignatures({required this.coinSpends});
+
+  /// Coin spends to compute required signatures for
+  final List<CoinSpendJson> coinSpends;
+
+  factory RequiredSignatures.fromJson(Map<String, dynamic> json) =>
+      RequiredSignatures(
+        coinSpends: ((json['coin_spends']) as List)
+            .map(
+              (e) => CoinSpendJson.fromJson((e as Map).cast<String, dynamic>()),
+            )
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+  };
+}
+
+/// Response with the required BLS signatures
+class RequiredSignaturesResponse {
+  RequiredSignaturesResponse({required this.signatures});
+
+  /// One entry per required BLS signature (public key + message to sign)
+  final List<RequiredSignatureJson> signatures;
+
+  factory RequiredSignaturesResponse.fromJson(Map<String, dynamic> json) =>
+      RequiredSignaturesResponse(
+        signatures: ((json['signatures']) as List)
+            .map(
+              (e) => RequiredSignatureJson.fromJson(
+                (e as Map).cast<String, dynamic>(),
+              ),
+            )
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'signatures': signatures.map((e) => e.toJson()).toList(),
+  };
+}
+
 /// Resynchronize wallet data with the blockchain
 class Resync {
   Resync({
@@ -5255,6 +5341,60 @@ class SubmitTransactionResponse {
       SubmitTransactionResponse();
 
   Map<String, dynamic> toJson() => {};
+}
+
+/// Attach externally produced signatures and optionally broadcast
+class SubmitWithSignatures {
+  SubmitWithSignatures({
+    this.autoSubmit,
+    required this.coinSpends,
+    required this.signatures,
+  });
+
+  /// Whether to broadcast the resulting spend bundle now
+  final bool? autoSubmit;
+
+  /// Coin spends that were signed
+  final List<CoinSpendJson> coinSpends;
+
+  /// Hex-encoded BLS signatures to aggregate (order does not matter)
+  final List<String> signatures;
+
+  factory SubmitWithSignatures.fromJson(Map<String, dynamic> json) =>
+      SubmitWithSignatures(
+        autoSubmit: json['auto_submit'] == null
+            ? null
+            : (json['auto_submit'] as bool),
+        coinSpends: ((json['coin_spends']) as List)
+            .map(
+              (e) => CoinSpendJson.fromJson((e as Map).cast<String, dynamic>()),
+            )
+            .toList(),
+        signatures: ((json['signatures']) as List).cast<String>(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    if (autoSubmit != null) 'auto_submit': autoSubmit,
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+    'signatures': signatures,
+  };
+}
+
+/// Response with the aggregated, externally signed spend bundle
+class SubmitWithSignaturesResponse {
+  SubmitWithSignaturesResponse({required this.spendBundle});
+
+  /// The aggregated, signed spend bundle
+  final SpendBundleJson spendBundle;
+
+  factory SubmitWithSignaturesResponse.fromJson(Map<String, dynamic> json) =>
+      SubmitWithSignaturesResponse(
+        spendBundle: SpendBundleJson.fromJson(
+          (json['spend_bundle'] as Map).cast<String, dynamic>(),
+        ),
+      );
+
+  Map<String, dynamic> toJson() => {'spend_bundle': spendBundle.toJson()};
 }
 
 /// Accept an offer
@@ -6564,6 +6704,17 @@ class SageApi {
     return RenameKeyResponse.fromJson(json);
   }
 
+  /// Compute the BLS signatures an external signer must produce
+  Future<RequiredSignaturesResponse> requiredSignatures(
+    RequiredSignatures request,
+  ) async {
+    final json = await _client.callJson(
+      'required_signatures',
+      request.toJson(),
+    );
+    return RequiredSignaturesResponse.fromJson(json);
+  }
+
   /// Resynchronize wallet data with the blockchain
   Future<ResyncResponse> resync(Resync request) async {
     final json = await _client.callJson('resync', request.toJson());
@@ -6701,6 +6852,17 @@ class SageApi {
   ) async {
     final json = await _client.callJson('submit_transaction', request.toJson());
     return SubmitTransactionResponse.fromJson(json);
+  }
+
+  /// Attach externally produced signatures and optionally broadcast
+  Future<SubmitWithSignaturesResponse> submitWithSignatures(
+    SubmitWithSignatures request,
+  ) async {
+    final json = await _client.callJson(
+      'submit_with_signatures',
+      request.toJson(),
+    );
+    return SubmitWithSignaturesResponse.fromJson(json);
   }
 
   /// Accept an offer
@@ -7177,6 +7339,12 @@ const List<SageEndpoint> kSageEndpoints = [
     '{"fingerprint": 1234567890, "name": ""}',
   ),
   SageEndpoint(
+    'required_signatures',
+    'Transactions',
+    'Compute the BLS signatures an external signer must produce',
+    '{"coin_spends": []}',
+  ),
+  SageEndpoint(
     'resync',
     'System & Sync',
     'Resynchronize wallet data with the blockchain',
@@ -7289,6 +7457,12 @@ const List<SageEndpoint> kSageEndpoints = [
     'Transactions',
     'Submit a transaction to the network',
     '{"spend_bundle": {"aggregated_signature": "", "coin_spends": []}}',
+  ),
+  SageEndpoint(
+    'submit_with_signatures',
+    'Transactions',
+    'Attach externally produced signatures and optionally broadcast',
+    '{"coin_spends": [], "signatures": []}',
   ),
   SageEndpoint(
     'take_offer',

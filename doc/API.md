@@ -10,7 +10,7 @@ final res = await sage.api.generateMnemonic(GenerateMnemonic(use24Words: true));
 print(res.mnemonic);
 ```
 
-**105 endpoints**, 224 models, 12 enums.
+**107 endpoints**, 229 models, 12 enums.
 
 ## Endpoints
 
@@ -129,6 +129,7 @@ Import a wallet key
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `arborOnly` | `bool` | no | External-signer wallet (e.g. Tangem card): `key` must be a BLS public key. Creates exactly one `p2_delegated_conditions` ("arbor") puzzle and NO HD derivations (`derivation_index`/`hardened`/`unhardened` ignored). Spends are built unsigned; sign with `required_signatures` + `submit_with_signatures`. |
 | `derivationIndex` | `int` | no | Starting derivation index |
 | `emoji` | `String` | no | Optional emoji identifier |
 | `hardened` | `bool` | no | Optional hardened derivation count |
@@ -1033,6 +1034,16 @@ List transactions with filtering
 
 Returns `GetTransactionsResponse`.
 
+#### `requiredSignatures`
+
+Compute the BLS signatures an external signer must produce
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `coinSpends` | `List<CoinSpendJson>` | yes | Coin spends to compute required signatures for |
+
+Returns `RequiredSignaturesResponse`.
+
 #### `signCoinSpends`
 
 Sign coin spends to create a transaction
@@ -1054,6 +1065,18 @@ Submit a transaction to the network
 | `spendBundle` | `SpendBundleJson` | yes | Spend bundle to submit |
 
 Returns `SubmitTransactionResponse`.
+
+#### `submitWithSignatures`
+
+Attach externally produced signatures and optionally broadcast
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `autoSubmit` | `bool` | no | Whether to broadcast the resulting spend bundle now |
+| `coinSpends` | `List<CoinSpendJson>` | yes | Coin spends that were signed |
+| `signatures` | `List<String>` | yes | Hex-encoded BLS signatures to aggregate (order does not matter) |
+
+Returns `SubmitWithSignaturesResponse`.
 
 #### `viewCoinSpends`
 

@@ -205,6 +205,24 @@ seconds timestamp.
   `sendTransactionImmediately` (see §12).
 - **Clawback:** `finalizeClawback(FinalizeClawback(...))`.
 
+### External signer (Tangem hardware card)
+
+Import the card's BLS public key as the wallet `key` (watch-only). Sage
+already curries it into the **`p2_delegated_conditions` ("arbor") puzzle** —
+the exact puzzle a Tangem card spends — and syncs that address, so balance,
+coins and history work normally. Only signing is external. Flow:
+
+1. Build with `autoSubmit: false` (e.g. `sendXch`/`sendCat`) → `coinSpends`.
+2. `requiredSignatures(RequiredSignatures(coinSpends:))` →
+   `signatures: [{publicKey, message}]` (consensus-correct AGG_SIG messages).
+3. Sign each `message` on the card over NFC (the card key == `publicKey`).
+4. `submitWithSignatures(SubmitWithSignatures(coinSpends:, signatures:[...],
+   autoSubmit:true))` — Sage BLS-aggregates the card signatures, builds the
+   spend bundle, and broadcasts. Returns the signed `spendBundle`.
+
+In-process `signCoinSpends` is **not** used here (no secret key on file);
+`requiredSignatures` + `submitWithSignatures` replace it for card wallets.
+
 ---
 
 ## 10. Addresses
