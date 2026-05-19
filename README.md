@@ -2,17 +2,29 @@
 
 A Flutter plugin that links the [**Sage**](https://github.com/xch-dev/sage) Chia
 wallet core **in-process** (no RPC server, no TLS sockets, no extra processes)
-and exposes every Sage endpoint to Dart through a single generic JSON call.
+and exposes every Sage endpoint to Dart as a **typed API**.
 
 ```dart
 await SageBinding.init();
 final dir = await getApplicationSupportDirectory();
 final sage = await SageClient.newInstance(dataDir: '${dir.path}/sage');
 
-// Same endpoint names + request/response JSON as Sage's RPC API.
-final m = await sage.callJson('generate_mnemonic', {'use_24_words': true});
-await sage.callJson('import_key', {'name': 'Main', 'key': m['mnemonic']});
+// Typed API — request/response are real Dart classes (see doc/API.md).
+final m = await sage.api.generateMnemonic(GenerateMnemonic(use24Words: true));
+final key = await sage.api.importKey(
+  ImportKey(name: 'Main', key: m.mnemonic, login: true),
+);
+final status = await sage.api.getSyncStatus();
+print('${status.receiveAddress} — ${status.selectableBalance} mojos');
+
+// Or drop to the raw JSON escape hatch for anything not yet modelled:
+final raw = await sage.callJson('get_version');
 ```
+
+The typed API (`SageClient.api`, ~100 methods + ~220 models) is generated from
+Sage's OpenAPI spec and stays in sync with the vendored Sage — see
+[`doc/API.md`](doc/API.md) for the full endpoint reference and the
+**wallet-simulator example** in [`example/`](example/lib/main.dart).
 
 ## Architecture
 
@@ -117,14 +129,25 @@ explicitly if you use it.
 
 ## Regenerating bindings
 
-Only needed if you change the public Rust API in `rust/src/api/`:
+FFI bindings (only if you change the public Rust API in `rust/src/api/`):
 
 ```bash
 flutter_rust_bridge_codegen generate
 ```
 
+Typed Dart API + docs (`lib/src/sage_api.g.dart`, `doc/API.md`) — generated
+from Sage's OpenAPI spec, so it tracks the vendored Sage automatically:
+
+```bash
+tool/generate_api.sh
+```
+
+`gen_sage_api.py` maps OpenAPI → Dart: `$ref`→class, string-enum→Dart `enum`,
+`Amount`→`BigInt`, nullable/optional→`T?`, tagged unions (`Id`/`Action`)→raw
+`Map`. `SageApi` gets one typed method per endpoint over `callJson`.
+
 ## Updating vendored Sage
 
 Re-sync `crates/`, `migrations/`, `.sqlx/` from upstream, keep the
-`[workspace] members`/`exclude` edit in `vendor/sage/Cargo.toml`, then re-run
-the cross-compiles.
+`[workspace] members`/`exclude` edit in `vendor/sage/Cargo.toml`, re-run the
+cross-compiles, then `tool/generate_api.sh` to refresh the typed API.

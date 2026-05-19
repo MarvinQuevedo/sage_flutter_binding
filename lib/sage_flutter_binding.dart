@@ -1,8 +1,7 @@
 /// Flutter binding for the [Sage](https://github.com/xch-dev/sage) Chia wallet.
 ///
 /// Sage's wallet core is linked in-process (no RPC server, no TLS sockets).
-/// Every endpoint Sage's RPC exposes is reachable through [SageClient.call]
-/// with the exact same request/response JSON.
+/// Use the typed [SageApi] facade via `SageClient.api`:
 ///
 /// ```dart
 /// import 'package:path_provider/path_provider.dart';
@@ -12,17 +11,23 @@
 /// final dir = await getApplicationSupportDirectory();
 /// final sage = await SageClient.newInstance(dataDir: '${dir.path}/sage');
 ///
-/// final mnemonic =
-///     await sage.callJson('generate_mnemonic', {'use_24_words': true});
+/// final res = await sage.api.generateMnemonic(
+///   GenerateMnemonic(use24Words: true),
+/// );
+/// print(res.mnemonic);
 /// ```
+///
+/// For endpoints not yet typed (or to bypass the models) use the raw
+/// [SageClientJson.callJson] escape hatch.
 library;
-
-import 'dart:convert';
 
 import 'src/rust/api/sage_client.dart';
 import 'src/rust/frb_generated.dart';
+import 'src/sage_api.g.dart';
 
 export 'src/rust/api/sage_client.dart' show SageClient;
+export 'src/sage_client_ext.dart' show SageClientJson;
+export 'src/sage_api.g.dart';
 
 /// One-time loader for the native Sage library. Call before any [SageClient].
 class SageBinding {
@@ -46,22 +51,7 @@ class SageBinding {
   }
 }
 
-/// JSON convenience helpers on top of the generated string-based [SageClient].
-extension SageClientJson on SageClient {
-  /// Calls [endpoint] with a Dart map body and decodes the JSON response.
-  ///
-  /// Throws if Sage returns an error (the message is the Rust error string).
-  Future<Map<String, dynamic>> callJson(
-    String endpoint, [
-    Map<String, dynamic> request = const {},
-  ]) async {
-    final responseJson = await call(
-      endpoint: endpoint,
-      requestJson: jsonEncode(request),
-    );
-    final decoded = jsonDecode(responseJson);
-    return decoded is Map<String, dynamic>
-        ? decoded
-        : <String, dynamic>{'result': decoded};
-  }
+/// Entry point to the typed API: `client.api.login(...)`, etc.
+extension SageApiAccess on SageClient {
+  SageApi get api => SageApi(this);
 }
