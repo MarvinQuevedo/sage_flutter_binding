@@ -1,0 +1,41 @@
+[package]
+name = "sage_flutter_binding"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.11.1"
+
+# Vendored Sage wallet crates (in-process, no RPC server).
+sage = { path = "../vendor/sage/crates/sage" }
+sage-api = { path = "../vendor/sage/crates/sage-api" }
+sage-api-macro = { path = "../vendor/sage/crates/sage-api/macro" }
+
+anyhow = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tracing = "0.1"
+
+# rustls + aws-lc-rs is pulled transitively by chia-wallet-sdk (rustls feature).
+# We depend on it explicitly to:
+#   1. install the crypto provider before any TLS use (Sage's SSL connector),
+#   2. force the `bindgen` feature so aws-lc-sys cross-compiles for
+#      Android / iOS (the same trick Sage's own src-tauri uses).
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+aws-lc-rs = { version = "1", features = ["bindgen"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+# Mobile release builds: keep the shipped library small. Debug builds of the
+# full Sage graph are ~400-700MB; with strip + LTO + opt-level "s" the release
+# artifact is an order of magnitude smaller.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"  # flutter_rust_bridge converts Rust panics into Dart errors

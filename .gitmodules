@@ -1,0 +1,4 @@
+[submodule "vendor/sage"]
+	path = vendor/sage
+	url = https://github.com/MarvinQuevedo/sage.git
+	branch = flutter-binding/v0.12.10

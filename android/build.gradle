@@ -1,0 +1,54 @@
+// The native Sage library is built from Rust by Cargokit (flutter_rust_bridge).
+
+group = "inc.imx.sage_flutter_binding"
+version = "1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.11.1")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply from: "../cargokit/gradle/plugin.gradle"
+
+android {
+    namespace = "inc.imx.sage_flutter_binding"
+
+    // Bumping the plugin compileSdk version requires all clients of this plugin
+    // to bump the version in their app.
+    compileSdk = 36
+
+    // NDK version is taken from the consuming app's android.ndkVersion.
+    // Cargokit requires it to be set there (we pin r26d in the example app).
+    ndkVersion = android.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        // Sage's crypto/db stack (aws-lc, sqlite) needs a modern NDK API level.
+        minSdk = 24
+    }
+}
+
+// Builds rust/ (cdylib `sage_flutter_binding`) for each Android ABI and drops
+// the resulting libsage_flutter_binding.so into jniLibs.
+cargokit {
+    manifestDir = "../rust"
+    libname = "sage_flutter_binding"
+}

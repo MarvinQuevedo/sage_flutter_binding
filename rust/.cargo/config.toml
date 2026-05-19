@@ -1,0 +1,5 @@
+# Sage's database crate uses sqlx's compile-time-checked queries. We ship the
+# prepared query metadata (vendor/sage/.sqlx) so no live database is needed at
+# build time. This must be set for every cargo invocation (host + cross).
+[env]
+SQLX_OFFLINE = "true"
