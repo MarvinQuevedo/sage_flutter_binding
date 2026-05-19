@@ -10,7 +10,7 @@ final res = await sage.api.generateMnemonic(GenerateMnemonic(use24Words: true));
 print(res.mnemonic);
 ```
 
-**100 endpoints**, 209 models, 11 enums.
+**105 endpoints**, 219 models, 11 enums.
 
 ## Endpoints
 
@@ -1064,6 +1064,64 @@ View coin spends without signing
 | `coinSpends` | `List<CoinSpendJson>` | yes | Coin spends to view |
 
 Returns `ViewCoinSpendsResponse`.
+
+### WalletConnect
+
+#### `filterUnlockedCoins`
+
+Filter unlocked coins from a list
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `coinIds` | `List<String>` | yes | Coin IDs to filter |
+
+Returns `FilterUnlockedCoinsResponse`.
+
+#### `getAssetCoins`
+
+Get spendable coins for an asset
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `assetId` | `String` | no | Asset ID to filter by |
+| `includedLocked` | `bool` | no | Whether to include locked coins |
+| `limit` | `int` | no | Number of results to return |
+| `offset` | `int` | no | Pagination offset |
+| `type` | `AssetCoinType` | no |  |
+
+Returns `GetAssetCoinsResponse`.
+
+#### `sendTransactionImmediately`
+
+Send a transaction immediately
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `spendBundle` | `SpendBundle` | yes | Spend bundle to send |
+
+Returns `SendTransactionImmediatelyResponse`.
+
+#### `signMessageByAddress`
+
+Sign a message by address
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `address` | `String` | yes | Address whose key to use |
+| `message` | `String` | yes | Message to sign |
+
+Returns `SignMessageByAddressResponse`.
+
+#### `signMessageWithPublicKey`
+
+Sign a message with a public key
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `message` | `String` | yes | Message to sign |
+| `publicKey` | `String` | yes | Public key to use for signing |
+
+Returns `SignMessageWithPublicKeyResponse`.
 
 ### XCH Transactions
 

@@ -1269,6 +1269,34 @@ class FeeAction {
   Map<String, dynamic> toJson() => {'amount': amount.toString()};
 }
 
+/// Filter unlocked coins from a list
+class FilterUnlockedCoins {
+  FilterUnlockedCoins({required this.coinIds});
+
+  /// Coin IDs to filter
+  final List<String> coinIds;
+
+  factory FilterUnlockedCoins.fromJson(Map<String, dynamic> json) =>
+      FilterUnlockedCoins(coinIds: ((json['coin_ids']) as List).cast<String>());
+
+  Map<String, dynamic> toJson() => {'coin_ids': coinIds};
+}
+
+/// Response with unlocked coin IDs
+class FilterUnlockedCoinsResponse {
+  FilterUnlockedCoinsResponse({required this.coinIds});
+
+  /// List of unlocked coin IDs
+  final List<String> coinIds;
+
+  factory FilterUnlockedCoinsResponse.fromJson(Map<String, dynamic> json) =>
+      FilterUnlockedCoinsResponse(
+        coinIds: ((json['coin_ids']) as List).cast<String>(),
+      );
+
+  Map<String, dynamic> toJson() => {'coin_ids': coinIds};
+}
+
 /// Send CAT tokens to an address
 class FinalizeClawback {
   FinalizeClawback({this.autoSubmit, required this.coinIds, required this.fee});
@@ -1382,6 +1410,53 @@ class GetAreCoinsSpendableResponse {
       GetAreCoinsSpendableResponse(spendable: json['spendable'] as bool);
 
   Map<String, dynamic> toJson() => {'spendable': spendable};
+}
+
+/// Get spendable coins for an asset
+class GetAssetCoins {
+  GetAssetCoins({
+    this.assetId,
+    this.includedLocked,
+    this.limit,
+    this.offset,
+    this.type,
+  });
+
+  /// Asset ID to filter by
+  final String? assetId;
+
+  /// Whether to include locked coins
+  final bool? includedLocked;
+
+  /// Number of results to return
+  final int? limit;
+
+  /// Pagination offset
+  final int? offset;
+
+  final AssetCoinType? type;
+
+  factory GetAssetCoins.fromJson(Map<String, dynamic> json) => GetAssetCoins(
+    assetId: json['assetId'] == null ? null : (json['assetId'] as String),
+    includedLocked: json['includedLocked'] == null
+        ? null
+        : (json['includedLocked'] as bool),
+    limit: json['limit'] == null ? null : (json['limit'] as int),
+    offset: json['offset'] == null ? null : (json['offset'] as int),
+    type: json['type'] == null
+        ? null
+        : (AssetCoinType.fromJson(
+            (json['type'] as Map).cast<String, dynamic>(),
+          )),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (assetId != null) 'assetId': assetId,
+    if (includedLocked != null) 'includedLocked': includedLocked,
+    if (limit != null) 'limit': limit,
+    if (offset != null) 'offset': offset,
+    if (type != null) 'type': type!.toJson(),
+  };
 }
 
 /// Get CAT tokens in wallet
@@ -4541,6 +4616,46 @@ class SendCat {
   };
 }
 
+/// Send a transaction immediately
+class SendTransactionImmediately {
+  SendTransactionImmediately({required this.spendBundle});
+
+  /// Spend bundle to send
+  final SpendBundle spendBundle;
+
+  factory SendTransactionImmediately.fromJson(Map<String, dynamic> json) =>
+      SendTransactionImmediately(
+        spendBundle: SpendBundle.fromJson(
+          (json['spend_bundle'] as Map).cast<String, dynamic>(),
+        ),
+      );
+
+  Map<String, dynamic> toJson() => {'spend_bundle': spendBundle.toJson()};
+}
+
+/// Response with transaction status
+class SendTransactionImmediatelyResponse {
+  SendTransactionImmediatelyResponse({this.error, required this.status});
+
+  /// Optional error message
+  final String? error;
+
+  /// Status code
+  final int status;
+
+  factory SendTransactionImmediatelyResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => SendTransactionImmediatelyResponse(
+    error: json['error'] == null ? null : (json['error'] as String),
+    status: json['status'] as int,
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (error != null) 'error': error,
+    'status': status,
+  };
+}
+
 /// Send XCH to an address
 class SendXch {
   SendXch({
@@ -4795,6 +4910,83 @@ class SignCoinSpendsResponse {
       );
 
   Map<String, dynamic> toJson() => {'spend_bundle': spendBundle.toJson()};
+}
+
+/// Sign a message by address
+class SignMessageByAddress {
+  SignMessageByAddress({required this.address, required this.message});
+
+  /// Address whose key to use
+  final String address;
+
+  /// Message to sign
+  final String message;
+
+  factory SignMessageByAddress.fromJson(Map<String, dynamic> json) =>
+      SignMessageByAddress(
+        address: json['address'] as String,
+        message: json['message'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {'address': address, 'message': message};
+}
+
+/// Response with signed message
+class SignMessageByAddressResponse {
+  SignMessageByAddressResponse({
+    required this.publicKey,
+    required this.signature,
+  });
+
+  /// Public key used
+  final String publicKey;
+
+  /// Signature
+  final String signature;
+
+  factory SignMessageByAddressResponse.fromJson(Map<String, dynamic> json) =>
+      SignMessageByAddressResponse(
+        publicKey: json['publicKey'] as String,
+        signature: json['signature'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'publicKey': publicKey,
+    'signature': signature,
+  };
+}
+
+/// Sign a message with a public key
+class SignMessageWithPublicKey {
+  SignMessageWithPublicKey({required this.message, required this.publicKey});
+
+  /// Message to sign
+  final String message;
+
+  /// Public key to use for signing
+  final String publicKey;
+
+  factory SignMessageWithPublicKey.fromJson(Map<String, dynamic> json) =>
+      SignMessageWithPublicKey(
+        message: json['message'] as String,
+        publicKey: json['publicKey'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {'message': message, 'publicKey': publicKey};
+}
+
+/// Response with message signature
+class SignMessageWithPublicKeyResponse {
+  SignMessageWithPublicKeyResponse({required this.signature});
+
+  /// Signature
+  final String signature;
+
+  factory SignMessageWithPublicKeyResponse.fromJson(
+    Map<String, dynamic> json,
+  ) => SignMessageWithPublicKeyResponse(signature: json['signature'] as String);
+
+  Map<String, dynamic> toJson() => {'signature': signature};
 }
 
 class SpendBundleJson {
@@ -5589,6 +5781,14 @@ class UpdateOptionResponse {
   Map<String, dynamic> toJson() => {};
 }
 
+class Vec {
+  const Vec();
+
+  factory Vec.fromJson(Map<String, dynamic> json) => Vec();
+
+  Map<String, dynamic> toJson() => {};
+}
+
 /// View coin spends without signing
 class ViewCoinSpends {
   ViewCoinSpends({required this.coinSpends});
@@ -5791,6 +5991,17 @@ class SageApi {
     return TransactionResponse.fromJson(json);
   }
 
+  /// Filter unlocked coins from a list
+  Future<FilterUnlockedCoinsResponse> filterUnlockedCoins(
+    FilterUnlockedCoins request,
+  ) async {
+    final json = await _client.callJson(
+      'filter_unlocked_coins',
+      request.toJson(),
+    );
+    return FilterUnlockedCoinsResponse.fromJson(json);
+  }
+
   /// Send CAT tokens to an address
   Future<TransactionResponse> finalizeClawback(FinalizeClawback request) async {
     final json = await _client.callJson('finalize_clawback', request.toJson());
@@ -5822,6 +6033,12 @@ class SageApi {
       request.toJson(),
     );
     return GetAreCoinsSpendableResponse.fromJson(json);
+  }
+
+  /// Get spendable coins for an asset
+  Future<Map<String, dynamic>> getAssetCoins(GetAssetCoins request) async {
+    final json = await _client.callJson('get_asset_coins', request.toJson());
+    return json;
   }
 
   /// Get CAT tokens in wallet
@@ -6196,6 +6413,17 @@ class SageApi {
     return TransactionResponse.fromJson(json);
   }
 
+  /// Send a transaction immediately
+  Future<SendTransactionImmediatelyResponse> sendTransactionImmediately(
+    SendTransactionImmediately request,
+  ) async {
+    final json = await _client.callJson(
+      'send_transaction_immediately',
+      request.toJson(),
+    );
+    return SendTransactionImmediatelyResponse.fromJson(json);
+  }
+
   /// Send XCH to an address
   Future<TransactionResponse> sendXch(SendXch request) async {
     final json = await _client.callJson('send_xch', request.toJson());
@@ -6262,6 +6490,28 @@ class SageApi {
   Future<SignCoinSpendsResponse> signCoinSpends(SignCoinSpends request) async {
     final json = await _client.callJson('sign_coin_spends', request.toJson());
     return SignCoinSpendsResponse.fromJson(json);
+  }
+
+  /// Sign a message by address
+  Future<SignMessageByAddressResponse> signMessageByAddress(
+    SignMessageByAddress request,
+  ) async {
+    final json = await _client.callJson(
+      'sign_message_by_address',
+      request.toJson(),
+    );
+    return SignMessageByAddressResponse.fromJson(json);
+  }
+
+  /// Sign a message with a public key
+  Future<SignMessageWithPublicKeyResponse> signMessageWithPublicKey(
+    SignMessageWithPublicKey request,
+  ) async {
+    final json = await _client.callJson(
+      'sign_message_with_public_key',
+      request.toJson(),
+    );
+    return SignMessageWithPublicKeyResponse.fromJson(json);
   }
 
   /// Split coins into multiple smaller coins
@@ -6349,3 +6599,586 @@ class SageApi {
     return ViewOfferResponse.fromJson(json);
   }
 }
+
+/// One entry per Sage endpoint: name, OpenAPI tag, description and
+/// a ready-to-edit request JSON template (required fields filled).
+class SageEndpoint {
+  const SageEndpoint(this.name, this.tag, this.description, this.template);
+  final String name;
+  final String tag;
+  final String description;
+  final String template;
+}
+
+const List<SageEndpoint> kSageEndpoints = [
+  SageEndpoint(
+    'add_nft_uri',
+    'NFTs',
+    'Add a URI to an NFT',
+    '{"fee": "0", "kind": "data", "nft_id": "", "uri": ""}',
+  ),
+  SageEndpoint(
+    'add_peer',
+    'Peers',
+    'Add a new peer to connect to',
+    '{"ip": "node.example.com:8444"}',
+  ),
+  SageEndpoint(
+    'assign_nfts_to_did',
+    'NFTs',
+    'Assign NFTs to a DID',
+    '{"fee": "0", "nft_ids": []}',
+  ),
+  SageEndpoint(
+    'auto_combine_cat',
+    'CAT Tokens',
+    'Automatically combine CAT coins',
+    '{"asset_id": "", "fee": "0", "max_coins": 0}',
+  ),
+  SageEndpoint(
+    'auto_combine_xch',
+    'XCH Transactions',
+    'Automatically combine XCH coins',
+    '{"fee": "0", "max_coins": 0}',
+  ),
+  SageEndpoint(
+    'bulk_mint_nfts',
+    'NFTs',
+    'Mint multiple NFTs in one transaction',
+    '{"did_id": "", "fee": "0", "mints": []}',
+  ),
+  SageEndpoint(
+    'bulk_send_cat',
+    'CAT Tokens',
+    'Send CAT tokens to multiple addresses',
+    '{"addresses": [], "amount": "0", "asset_id": "", "fee": "0"}',
+  ),
+  SageEndpoint(
+    'bulk_send_xch',
+    'XCH Transactions',
+    'Send XCH to multiple addresses',
+    '{"addresses": [], "amount": "0", "fee": "0"}',
+  ),
+  SageEndpoint(
+    'cancel_offer',
+    'Offers',
+    'Cancel an offer on-chain',
+    '{"fee": "0", "offer_id": ""}',
+  ),
+  SageEndpoint(
+    'cancel_offers',
+    'Offers',
+    'Cancel multiple offers',
+    '{"fee": "0", "offer_ids": []}',
+  ),
+  SageEndpoint(
+    'check_address',
+    'Addresses',
+    'Validate and check an address',
+    '{"address": "xch1..."}',
+  ),
+  SageEndpoint(
+    'combine',
+    'XCH Transactions',
+    'Combine multiple coins into one',
+    '{"coin_ids": [], "fee": "0"}',
+  ),
+  SageEndpoint(
+    'combine_offers',
+    'Offers',
+    'Combine multiple offers',
+    '{"offers": []}',
+  ),
+  SageEndpoint(
+    'create_did',
+    'DIDs',
+    'Create a new DID',
+    '{"fee": "0", "name": ""}',
+  ),
+  SageEndpoint(
+    'create_transaction',
+    'Transactions',
+    'create_transaction',
+    '{"actions": []}',
+  ),
+  SageEndpoint(
+    'delete_database',
+    'System & Sync',
+    'Delete a wallet database',
+    '{"fingerprint": 1234567890, "network": ""}',
+  ),
+  SageEndpoint(
+    'delete_key',
+    'Authentication & Keys',
+    'Delete a wallet key',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint('delete_offer', 'Offers', 'Delete an offer', '{"offer_id": ""}'),
+  SageEndpoint(
+    'delete_user_theme',
+    'Themes',
+    'Delete a theme NFT from the wallet',
+    '{"nft_id": ""}',
+  ),
+  SageEndpoint(
+    'exercise_options',
+    'Options',
+    'Exercise options',
+    '{"fee": "0", "option_ids": []}',
+  ),
+  SageEndpoint(
+    'filter_unlocked_coins',
+    'WalletConnect',
+    'Filter unlocked coins from a list',
+    '{"coin_ids": []}',
+  ),
+  SageEndpoint(
+    'finalize_clawback',
+    'XCH Transactions',
+    'Send CAT tokens to an address',
+    '{"coin_ids": [], "fee": "0"}',
+  ),
+  SageEndpoint(
+    'generate_mnemonic',
+    'Authentication & Keys',
+    'Generate a new mnemonic phrase for wallet creation',
+    '{"use_24_words": false}',
+  ),
+  SageEndpoint('get_all_cats', 'CAT Tokens', 'Get all known CAT tokens', '{}'),
+  SageEndpoint(
+    'get_are_coins_spendable',
+    'Coins',
+    'Check if specific coins are spendable',
+    '{"coin_ids": []}',
+  ),
+  SageEndpoint(
+    'get_asset_coins',
+    'WalletConnect',
+    'Get spendable coins for an asset',
+    '{}',
+  ),
+  SageEndpoint('get_cats', 'CAT Tokens', 'Get CAT tokens in wallet', '{}'),
+  SageEndpoint(
+    'get_coins',
+    'Coins',
+    'List coins with filtering and pagination',
+    '{"limit": 50, "offset": 0}',
+  ),
+  SageEndpoint(
+    'get_coins_by_ids',
+    'Coins',
+    'Retrieve specific coins by their IDs',
+    '{"coin_ids": []}',
+  ),
+  SageEndpoint(
+    'get_database_stats',
+    'System & Sync',
+    'Retrieve database statistics',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_derivations',
+    'Addresses',
+    'Get address derivation information',
+    '{"limit": 50, "offset": 0}',
+  ),
+  SageEndpoint('get_dids', 'DIDs', 'List all DIDs in the wallet', '{}'),
+  SageEndpoint(
+    'get_key',
+    'Authentication & Keys',
+    'Get a specific wallet key',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_keys',
+    'Authentication & Keys',
+    'List all wallet keys',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_minter_did_ids',
+    'DIDs',
+    'Get minter DIDs with pagination',
+    '{"limit": 50, "offset": 0}',
+  ),
+  SageEndpoint(
+    'get_network',
+    'Network Settings',
+    'Get current network information',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_networks',
+    'Network Settings',
+    'List available networks',
+    '{}',
+  ),
+  SageEndpoint('get_nft', 'NFTs', 'Get a specific NFT', '{"nft_id": ""}'),
+  SageEndpoint(
+    'get_nft_collection',
+    'NFTs',
+    'Get a specific NFT collection',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_nft_collections',
+    'NFTs',
+    'List NFT collections',
+    '{"include_hidden": false, "limit": 50, "offset": 0}',
+  ),
+  SageEndpoint('get_nft_data', 'NFTs', 'Get NFT data file', '{"nft_id": ""}'),
+  SageEndpoint('get_nft_icon', 'NFTs', 'Get NFT icon image', '{"nft_id": ""}'),
+  SageEndpoint(
+    'get_nft_thumbnail',
+    'NFTs',
+    'Get NFT thumbnail image',
+    '{"nft_id": ""}',
+  ),
+  SageEndpoint(
+    'get_nfts',
+    'NFTs',
+    'List NFTs with filtering',
+    '{"include_hidden": false, "limit": 50, "offset": 0, "sort_mode": "name"}',
+  ),
+  SageEndpoint(
+    'get_offer',
+    'Offers',
+    'Get a specific offer',
+    '{"offer_id": ""}',
+  ),
+  SageEndpoint('get_offers', 'Offers', 'List all offers', '{}'),
+  SageEndpoint(
+    'get_offers_for_asset',
+    'Offers',
+    'Get offers for a specific asset',
+    '{"asset_id": ""}',
+  ),
+  SageEndpoint(
+    'get_option',
+    'Options',
+    'Get a specific option',
+    '{"option_id": ""}',
+  ),
+  SageEndpoint(
+    'get_options',
+    'Options',
+    'List options with filtering',
+    '{"limit": 50, "offset": 0}',
+  ),
+  SageEndpoint('get_peers', 'Peers', 'List all network peers', '{}'),
+  SageEndpoint(
+    'get_pending_transactions',
+    'Transactions',
+    'Get pending transactions',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_secret_key',
+    'Authentication & Keys',
+    'Get wallet secret key',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'get_spendable_coin_count',
+    'Coins',
+    'Get the count of spendable coins',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_sync_status',
+    'System & Sync',
+    'Get the current synchronization status',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_token',
+    'CAT Tokens',
+    'Get detailed token information',
+    '{}',
+  ),
+  SageEndpoint(
+    'get_transaction',
+    'Transactions',
+    'Get a specific transaction by height',
+    '{"height": 0}',
+  ),
+  SageEndpoint(
+    'get_transactions',
+    'Transactions',
+    'List transactions with filtering',
+    '{"ascending": false, "limit": 50, "offset": 0}',
+  ),
+  SageEndpoint(
+    'get_user_theme',
+    'Themes',
+    'Get a specific theme NFT',
+    '{"nft_id": ""}',
+  ),
+  SageEndpoint('get_user_themes', 'Themes', 'List all custom theme NFTs', '{}'),
+  SageEndpoint('get_version', 'System & Sync', 'Get the wallet version', '{}'),
+  SageEndpoint(
+    'import_key',
+    'Authentication & Keys',
+    'Import a wallet key',
+    '{"key": "", "name": ""}',
+  ),
+  SageEndpoint('import_offer', 'Offers', 'Import an offer', '{"offer": ""}'),
+  SageEndpoint(
+    'increase_derivation_index',
+    'Addresses',
+    'Increase the derivation index to generate more addresses',
+    '{"index": 100}',
+  ),
+  SageEndpoint(
+    'is_asset_owned',
+    'Assets',
+    'Check if an asset is owned',
+    '{"asset_id": ""}',
+  ),
+  SageEndpoint(
+    'issue_cat',
+    'CAT Tokens',
+    'Issue a new CAT token',
+    '{"amount": "0", "fee": "0", "name": "", "ticker": ""}',
+  ),
+  SageEndpoint(
+    'login',
+    'Authentication & Keys',
+    'Login to a wallet using a fingerprint',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'logout',
+    'Authentication & Keys',
+    'Log out of the current wallet session',
+    '{}',
+  ),
+  SageEndpoint(
+    'make_offer',
+    'Offers',
+    'Create a new offer',
+    '{"fee": "0", "offered_assets": [], "requested_assets": []}',
+  ),
+  SageEndpoint(
+    'mint_option',
+    'Options',
+    'Mint a new option',
+    '{"expiration_seconds": 0, "fee": "0", "strike": {"amount": "0"}, "underlying": {"amount": "0"}}',
+  ),
+  SageEndpoint(
+    'multi_send',
+    'XCH Transactions',
+    'Send multiple assets in one transaction',
+    '{"fee": "0", "payments": []}',
+  ),
+  SageEndpoint(
+    'normalize_dids',
+    'DIDs',
+    'Normalize DIDs to latest state',
+    '{"did_ids": [], "fee": "0"}',
+  ),
+  SageEndpoint(
+    'perform_database_maintenance',
+    'System & Sync',
+    'Perform database maintenance operations',
+    '{"force_vacuum": false}',
+  ),
+  SageEndpoint(
+    'redownload_nft',
+    'NFTs',
+    'Re-download an `NFT`\'s data and metadata from its URIs',
+    '{"nft_id": "nft1..."}',
+  ),
+  SageEndpoint(
+    'remove_peer',
+    'Peers',
+    'Remove a peer from the connection list',
+    '{"ban": false, "ip": "127.0.0.1:8444"}',
+  ),
+  SageEndpoint(
+    'rename_key',
+    'Authentication & Keys',
+    'Rename a wallet key',
+    '{"fingerprint": 1234567890, "name": ""}',
+  ),
+  SageEndpoint(
+    'resync',
+    'System & Sync',
+    'Resynchronize wallet data with the blockchain',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'resync_cat',
+    'CAT Tokens',
+    'Resynchronize a `CAT` token\'s metadata from an external source',
+    '{"asset_id": "a628c1c2c6fcb74d53746157e438e108eab5c0bb3e5c80ff9b1910b3e4832913"}',
+  ),
+  SageEndpoint(
+    'save_user_theme',
+    'Themes',
+    'Save a theme NFT to the wallet',
+    '{"nft_id": ""}',
+  ),
+  SageEndpoint(
+    'send_cat',
+    'CAT Tokens',
+    'Send CAT tokens to an address',
+    '{"address": "", "amount": "0", "asset_id": "", "fee": "0"}',
+  ),
+  SageEndpoint(
+    'send_transaction_immediately',
+    'WalletConnect',
+    'Send a transaction immediately',
+    '{"spend_bundle": null}',
+  ),
+  SageEndpoint(
+    'send_xch',
+    'XCH Transactions',
+    'Send XCH to an address',
+    '{"address": "xch1...", "amount": "0", "fee": "0"}',
+  ),
+  SageEndpoint(
+    'set_change_address',
+    'Addresses',
+    'Set the change address for transactions',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'set_delta_sync',
+    'Network Settings',
+    'Enable or disable delta sync',
+    '{"delta_sync": true}',
+  ),
+  SageEndpoint(
+    'set_delta_sync_override',
+    'Network Settings',
+    'Override delta sync settings for a specific wallet',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'set_discover_peers',
+    'Peers',
+    'Enable or disable automatic peer discovery',
+    '{"discover_peers": true}',
+  ),
+  SageEndpoint(
+    'set_network',
+    'Network Settings',
+    'Set the active network',
+    '{"name": "mainnet"}',
+  ),
+  SageEndpoint(
+    'set_network_override',
+    'Network Settings',
+    'Override network settings for a specific wallet',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'set_target_peers',
+    'Peers',
+    'Set target number of peers to maintain',
+    '{"target_peers": 8}',
+  ),
+  SageEndpoint(
+    'set_wallet_emoji',
+    'Authentication & Keys',
+    'Set wallet emoji',
+    '{"fingerprint": 1234567890}',
+  ),
+  SageEndpoint(
+    'sign_coin_spends',
+    'Transactions',
+    'Sign coin spends to create a transaction',
+    '{"coin_spends": []}',
+  ),
+  SageEndpoint(
+    'sign_message_by_address',
+    'WalletConnect',
+    'Sign a message by address',
+    '{"address": "", "message": ""}',
+  ),
+  SageEndpoint(
+    'sign_message_with_public_key',
+    'WalletConnect',
+    'Sign a message with a public key',
+    '{"message": "", "publicKey": ""}',
+  ),
+  SageEndpoint(
+    'split',
+    'XCH Transactions',
+    'Split coins into multiple smaller coins',
+    '{"coin_ids": [], "fee": "0", "output_count": 0}',
+  ),
+  SageEndpoint(
+    'submit_transaction',
+    'Transactions',
+    'Submit a transaction to the network',
+    '{"spend_bundle": {"aggregated_signature": "", "coin_spends": []}}',
+  ),
+  SageEndpoint(
+    'take_offer',
+    'Offers',
+    'Accept an offer',
+    '{"fee": "0", "offer": ""}',
+  ),
+  SageEndpoint(
+    'transfer_dids',
+    'DIDs',
+    'Transfer DIDs to a new address',
+    '{"address": "", "did_ids": [], "fee": "0"}',
+  ),
+  SageEndpoint(
+    'transfer_nfts',
+    'NFTs',
+    'Transfer NFTs to a new owner',
+    '{"address": "", "fee": "0", "nft_ids": []}',
+  ),
+  SageEndpoint(
+    'transfer_options',
+    'Options',
+    'Transfer options to another address',
+    '{"address": "", "fee": "0", "option_ids": []}',
+  ),
+  SageEndpoint(
+    'update_cat',
+    'CAT Tokens',
+    'Update a `CAT` token\'s metadata and visibility',
+    '{"record": {"balance": "0", "precision": 0, "selectable_balance": "0", "visible": false}}',
+  ),
+  SageEndpoint(
+    'update_did',
+    'DIDs',
+    'Update a `DID`\'s name and visibility settings',
+    '{"did_id": "did:chia:...", "visible": true}',
+  ),
+  SageEndpoint(
+    'update_nft',
+    'NFTs',
+    'Update an `NFT`\'s visibility settings',
+    '{"nft_id": "nft1...", "visible": true}',
+  ),
+  SageEndpoint(
+    'update_nft_collection',
+    'NFTs',
+    'Update an `NFT` collection\'s visibility settings',
+    '{"collection_id": "col1...", "visible": true}',
+  ),
+  SageEndpoint(
+    'update_option',
+    'Options',
+    'Update an option\'s visibility settings',
+    '{"option_id": "0x...", "visible": true}',
+  ),
+  SageEndpoint(
+    'view_coin_spends',
+    'Transactions',
+    'View coin spends without signing',
+    '{"coin_spends": []}',
+  ),
+  SageEndpoint(
+    'view_offer',
+    'Offers',
+    'View an offer without accepting',
+    '{"offer": ""}',
+  ),
+];

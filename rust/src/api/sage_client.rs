@@ -18,7 +18,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use sage::Sage;
-use sage_api_macro::impl_endpoints;
+use sage_api_macro::impl_endpoints_tauri;
 use tokio::{runtime::Runtime, sync::Mutex};
 
 /// A single multi-threaded Tokio runtime drives all of Sage's async work
@@ -48,7 +48,9 @@ fn install_crypto_provider() {
 }
 
 // Generates `async fn dispatch(...)` with one match arm per Sage endpoint,
-// reading the endpoint list straight from the vendored `endpoints.json`.
+// reading the endpoint list from the vendored `endpoints.json` *and*
+// `endpoints-tauri.json` (the 5 WalletConnect endpoints — they are plain
+// `Sage` methods, no Tauri runtime needed). 105 endpoints total.
 //
 // For `login` this expands (roughly) to:
 //   "login" => {
@@ -56,7 +58,7 @@ fn install_crypto_provider() {
 //       let res = sage.login(req).await;
 //       serde_json::to_string(&res.map_err(...)?)
 //   }
-impl_endpoints! {
+impl_endpoints_tauri! {
     async fn dispatch(sage: &mut Sage, name: &str, body: &str) -> Result<String> {
         match name {
             (repeat endpoint_string => {

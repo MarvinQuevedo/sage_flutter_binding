@@ -343,6 +343,83 @@ class Gen:
         out.append("")
         return "\n".join(out)
 
+    # ---- console metadata (name/tag/desc/template) --------------------------
+    def _example(self, node, depth=0):
+        if depth > 3:
+            return {}
+        if "example" in node:
+            return node["example"]
+        ref = self._ref_name(node)
+        if ref:
+            if ref == "Amount":
+                return "0"  # mojos as string (lossless)
+            if ref in self.enums:
+                return self.enums[ref][0]
+            if ref in self.raw:
+                return {}
+            sub = self.schemas.get(ref, {})
+            return self._example(sub, depth + 1)
+        if "oneOf" in node:
+            inner = self._nullable_ref(node)
+            return self._example(inner, depth + 1) if inner else {}
+        t = node.get("type")
+        if isinstance(t, list):
+            t = [x for x in t if x != "null"][0]
+        if t == "object" or "properties" in node:
+            out = {}
+            req = set(node.get("required") or [])
+            for k, p in (node.get("properties") or {}).items():
+                if k in req:
+                    out[k] = self._example(p, depth + 1)
+            return out
+        if t == "array":
+            return []
+        if t == "integer":
+            return 0
+        if t == "number":
+            return 0
+        if t == "boolean":
+            return False
+        if t == "string":
+            return ""
+        return None
+
+    def emit_meta(self):
+        out = [
+            "/// One entry per Sage endpoint: name, OpenAPI tag, description and",
+            "/// a ready-to-edit request JSON template (required fields filled).",
+            "class SageEndpoint {",
+            "  const SageEndpoint(this.name, this.tag, this.description, "
+            "this.template);",
+            "  final String name;",
+            "  final String tag;",
+            "  final String description;",
+            "  final String template;",
+            "}",
+            "",
+            "const List<SageEndpoint> kSageEndpoints = [",
+        ]
+
+        def esc(s):
+            return (
+                str(s)
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .replace("$", "\\$")
+            )
+
+        for name, req, resp, tag, desc in self.endpoints():
+            tmpl = json.dumps(self._example(self.schemas.get(req, {})))
+            out.append(
+                f"  SageEndpoint('{name}', '{esc(tag)}', "
+                f"'{esc(desc)}', '{esc(tmpl)}'),"
+            )
+        out.append("];")
+        out.append("")
+        return "\n".join(out)
+
     def emit_dart(self):
         header = (
             "// GENERATED CODE - DO NOT MODIFY BY HAND.\n"
@@ -359,6 +436,7 @@ class Gen:
         for n in sorted(self.classes):
             body.append(self.emit_class(n))
         body.append(self.emit_api())
+        body.append(self.emit_meta())
         return header + "\n".join(body)
 
     def emit_docs(self):

@@ -798,20 +798,41 @@ class _ConsoleTab extends StatefulWidget {
 }
 
 class _ConsoleTabState extends State<_ConsoleTab> {
-  final _endpoint = TextEditingController(text: 'get_sync_status');
+  static final _pretty = const JsonEncoder.withIndent('  ');
+  late SageEndpoint _ep = kSageEndpoints.firstWhere(
+      (e) => e.name == 'get_sync_status',
+      orElse: () => kSageEndpoints.first);
   final _body = TextEditingController(text: '{}');
   String _out = '';
   bool _busy = false;
 
-  static const _quick = {
-    'get_version': '{}',
-    'get_sync_status': '{}',
-    'get_keys': '{}',
-    'get_cats': '{}',
-    'get_derivations': '{"offset":0,"limit":10}',
-    'get_coins': '{"offset":0,"limit":10}',
-    'get_pending_transactions': '{}',
-  };
+  // A few high-traffic shortcuts.
+  static const _quick = [
+    'get_sync_status',
+    'get_keys',
+    'get_cats',
+    'get_coins',
+    'get_transactions',
+    'get_nfts',
+    'check_address',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _select(_ep);
+  }
+
+  void _select(SageEndpoint e) {
+    setState(() {
+      _ep = e;
+      try {
+        _body.text = _pretty.convert(jsonDecode(e.template));
+      } catch (_) {
+        _body.text = e.template;
+      }
+    });
+  }
 
   Future<void> _call() async {
     setState(() {
@@ -825,8 +846,8 @@ class _ConsoleTabState extends State<_ConsoleTab> {
       } catch (_) {
         req = {};
       }
-      final res = await widget.client.callJson(_endpoint.text.trim(), req);
-      setState(() => _out = const JsonEncoder.withIndent('  ').convert(res));
+      final res = await widget.client.callJson(_ep.name, req);
+      setState(() => _out = _pretty.convert(res));
     } catch (e) {
       setState(() => _out = 'Error: $e');
     } finally {
@@ -838,31 +859,56 @@ class _ConsoleTabState extends State<_ConsoleTab> {
   Widget build(BuildContext context) {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Wrap(spacing: 8, children: [
-        for (final e in _quick.entries)
+        for (final q in _quick)
           ActionChip(
-              label: Text(e.key),
-              onPressed: () {
-                _endpoint.text = e.key;
-                _body.text = e.value;
-              }),
+            label: Text(q),
+            onPressed: () => _select(
+                kSageEndpoints.firstWhere((e) => e.name == q)),
+          ),
       ]),
       const SizedBox(height: 12),
-      TextField(
-          controller: _endpoint,
-          decoration: const InputDecoration(
-              labelText: 'Endpoint (any of 100)')),
+      // Searchable selector over all 100 endpoints.
+      DropdownMenu<SageEndpoint>(
+        initialSelection: _ep,
+        expandedInsets: EdgeInsets.zero,
+        enableFilter: true,
+        requestFocusOnTap: true,
+        label: const Text('Endpoint (type to search · 100 total)'),
+        leadingIcon: const Icon(Icons.search),
+        onSelected: (e) {
+          if (e != null) _select(e);
+        },
+        dropdownMenuEntries: [
+          for (final e in kSageEndpoints)
+            DropdownMenuEntry(
+              value: e,
+              label: e.name,
+              labelWidget: Text('${e.name}  ·  ${e.tag}'),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Text('${_ep.tag} — ${_ep.description}',
+          style: Theme.of(context).textTheme.bodySmall),
       const SizedBox(height: 12),
       TextField(
-          controller: _body,
-          maxLines: 4,
-          style: const TextStyle(fontFamily: 'monospace'),
-          decoration:
-              const InputDecoration(labelText: 'Request JSON', filled: true)),
+        controller: _body,
+        maxLines: 5,
+        style: const TextStyle(fontFamily: 'monospace'),
+        decoration: const InputDecoration(
+            labelText: 'Request JSON (prefilled template)', filled: true),
+      ),
       const SizedBox(height: 14),
       FilledButton.icon(
-          onPressed: _busy ? null : _call,
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('Call endpoint')),
+        onPressed: _busy ? null : _call,
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.play_arrow),
+        label: Text('Call  ${_ep.name}'),
+      ),
       const SizedBox(height: 16),
       if (_out.isNotEmpty)
         Container(
