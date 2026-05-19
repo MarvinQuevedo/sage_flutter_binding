@@ -34,3 +34,6 @@ migrate_working_dir/
 
 # Rust build artifacts (any crate, incl. vendored Sage if built in place)
 **/target/
+
+# Claude Code local state
+.claude/

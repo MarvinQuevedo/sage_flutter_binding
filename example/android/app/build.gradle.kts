@@ -8,10 +8,10 @@ plugins {
 android {
     namespace = "inc.imx.sage_flutter_binding_example"
     compileSdk = flutter.compileSdkVersion
-    // Pinned to NDK r26d — the version Sage's own mobile CI builds with and
-    // that aws-lc-sys / sqlite cross-compile cleanly against. Cargokit reads
-    // this value from the consuming app.
-    ndkVersion = "26.3.11579264"
+    // Highest NDK required by the plugin set (integration_test/jni need r28;
+    // NDKs are backward compatible). Cargokit reads this from the app and
+    // aws-lc-sys / sqlite cross-compile cleanly against it.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

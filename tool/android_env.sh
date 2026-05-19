@@ -51,6 +51,18 @@ export "CXX_armv7_linux_androideabi=$NDK_BIN/armv7a-linux-androideabi${ANDROID_A
 export "AR_armv7_linux_androideabi=$NDK_BIN/llvm-ar"
 export "RANLIB_armv7_linux_androideabi=$NDK_BIN/llvm-ranlib"
 
+# aws-lc-sys runs `bindgen` (libclang) directly — it does NOT go through the
+# `cc` crate, so it never gets the Android --target/--sysroot and fails with
+# "stdlib.h file not found". bindgen reads BINDGEN_EXTRA_CLANG_ARGS_<target>
+# (underscore form is recognized and shell-exportable). Give it the NDK sysroot
+# and target per ABI so it parses AWS-LC's headers for Android, not the host.
+# This is also why Cargokit/Gradle builds need this script sourced first.
+SYSROOT="$NDK/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
+export "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=--sysroot=$SYSROOT --target=aarch64-linux-android${ANDROID_API}"
+export "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android=--sysroot=$SYSROOT --target=x86_64-linux-android${ANDROID_API}"
+export "BINDGEN_EXTRA_CLANG_ARGS_i686_linux_android=--sysroot=$SYSROOT --target=i686-linux-android${ANDROID_API}"
+export "BINDGEN_EXTRA_CLANG_ARGS_armv7_linux_androideabi=--sysroot=$SYSROOT --target=armv7a-linux-androideabi${ANDROID_API}"
+
 # Cargo linkers.
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android${ANDROID_API}-clang"
 export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$NDK_BIN/armv7a-linux-androideabi${ANDROID_API}-clang"

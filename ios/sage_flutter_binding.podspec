@@ -29,7 +29,14 @@ its endpoints over a generic JSON API.
     :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../rust sage_flutter_binding',
     :execution_position => :before_compile,
     :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
-    :output_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony_out'],
+    # cargokit_phony_out keeps the phase always-out-of-date; the .a must also
+    # be declared as an output so Xcode's build system knows this phase
+    # produces the file referenced by OTHER_LDFLAGS (otherwise: "Build input
+    # file cannot be found" on a clean build).
+    :output_files => [
+      '${BUILT_PRODUCTS_DIR}/cargokit_phony_out',
+      '${BUILT_PRODUCTS_DIR}/libsage_flutter_binding.a',
+    ],
   }
 
   s.pod_target_xcconfig = {
