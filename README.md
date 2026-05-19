@@ -21,10 +21,14 @@ print('${status.receiveAddress} — ${status.selectableBalance} mojos');
 final raw = await sage.callJson('get_version');
 ```
 
-The typed API (`SageClient.api`, ~100 methods + ~220 models) is generated from
-Sage's OpenAPI spec and stays in sync with the vendored Sage — see
-[`doc/API.md`](doc/API.md) for the full endpoint reference and the
-**wallet-simulator example** in [`example/`](example/lib/main.dart).
+The typed API (`SageClient.api`, **105 methods + ~224 models**, incl. the 5
+WalletConnect endpoints) is generated from Sage's OpenAPI spec and stays in
+sync with the vendored Sage. See:
+
+- [`doc/WALLET_GUIDE.md`](doc/WALLET_GUIDE.md) — **how to build a wallet UI
+  screen by screen** (flows, sequences, polling, Tauri-command gaps).
+- [`doc/API.md`](doc/API.md) — full per-endpoint request/response reference.
+- the **wallet-simulator example** in [`example/`](example/lib/main.dart).
 
 ## Architecture
 
