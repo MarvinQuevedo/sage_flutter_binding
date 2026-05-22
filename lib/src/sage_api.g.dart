@@ -1280,6 +1280,63 @@ class EmptyResponse {
   Map<String, dynamic> toJson() => {};
 }
 
+/// Assemble and encode an offer from externally signed coin spends.
+///
+/// Counterpart to [`MakeOfferUnsigned`]: takes the coin spends and the BLS
+/// signatures produced by an external signer (e.g. a Tangem card), aggregates
+/// them into a spend bundle, and encodes it as a bech32 offer string.
+class EncodeOffer {
+  EncodeOffer({
+    this.autoImport,
+    required this.coinSpends,
+    required this.signatures,
+  });
+
+  /// Whether to automatically import the offer into the local database
+  final bool? autoImport;
+
+  /// Coin spends that were signed
+  final List<CoinSpendJson> coinSpends;
+
+  /// Hex-encoded BLS signatures to aggregate (order does not matter)
+  final List<String> signatures;
+
+  factory EncodeOffer.fromJson(Map<String, dynamic> json) => EncodeOffer(
+    autoImport: json['auto_import'] == null
+        ? null
+        : (json['auto_import'] as bool),
+    coinSpends: ((json['coin_spends']) as List)
+        .map((e) => CoinSpendJson.fromJson((e as Map).cast<String, dynamic>()))
+        .toList(),
+    signatures: ((json['signatures']) as List).cast<String>(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (autoImport != null) 'auto_import': autoImport,
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+    'signatures': signatures,
+  };
+}
+
+/// Response with the encoded offer
+class EncodeOfferResponse {
+  EncodeOfferResponse({required this.offer, required this.offerId});
+
+  /// Offer string (bech32 encoded)
+  final String offer;
+
+  /// Offer ID
+  final String offerId;
+
+  factory EncodeOfferResponse.fromJson(Map<String, dynamic> json) =>
+      EncodeOfferResponse(
+        offer: json['offer'] as String,
+        offerId: json['offer_id'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {'offer': offer, 'offer_id': offerId};
+}
+
 class Error {
   Error({required this.error});
 
@@ -3302,6 +3359,96 @@ class MakeOfferResponse {
   Map<String, dynamic> toJson() => {'offer': offer, 'offer_id': offerId};
 }
 
+/// Build the offer's coin spends without signing them.
+///
+/// Same inputs as [`MakeOffer`], but instead of signing in-process and
+/// returning an encoded offer, it returns the unsigned coin spends so an
+/// external signer (e.g. a Tangem card, which spends the
+/// `p2_delegated_conditions` / "arbor" puzzle) can produce the BLS
+/// signatures. Pair with `required_signatures` to get the messages to sign,
+/// then `encode_offer` to assemble and encode the finished offer.
+class MakeOfferUnsigned {
+  MakeOfferUnsigned({
+    this.coinIds,
+    this.expiresAtSecond,
+    required this.fee,
+    required this.offeredAssets,
+    this.receiveAddress,
+    required this.requestedAssets,
+  });
+
+  /// Optional specific coin IDs to use for the offer instead of auto-selecting
+  final List<String>? coinIds;
+
+  /// Optional expiration timestamp
+  final int? expiresAtSecond;
+
+  /// Transaction fee
+  final BigInt fee;
+
+  /// Assets offered in exchange
+  final List<OfferAmount> offeredAssets;
+
+  /// Optional receive address
+  final String? receiveAddress;
+
+  /// Assets requested in the offer
+  final List<OfferAmount> requestedAssets;
+
+  factory MakeOfferUnsigned.fromJson(
+    Map<String, dynamic> json,
+  ) => MakeOfferUnsigned(
+    coinIds: json['coin_ids'] == null
+        ? null
+        : (((json['coin_ids']) as List).cast<String>()),
+    expiresAtSecond: json['expires_at_second'] == null
+        ? null
+        : (json['expires_at_second'] as int),
+    fee: ((json['fee']) is String
+        ? BigInt.parse(json['fee'] as String)
+        : BigInt.from((json['fee'] as num).toInt())),
+    offeredAssets: ((json['offered_assets']) as List)
+        .map((e) => OfferAmount.fromJson((e as Map).cast<String, dynamic>()))
+        .toList(),
+    receiveAddress: json['receive_address'] == null
+        ? null
+        : (json['receive_address'] as String),
+    requestedAssets: ((json['requested_assets']) as List)
+        .map((e) => OfferAmount.fromJson((e as Map).cast<String, dynamic>()))
+        .toList(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (coinIds != null) 'coin_ids': coinIds,
+    if (expiresAtSecond != null) 'expires_at_second': expiresAtSecond,
+    'fee': fee.toString(),
+    'offered_assets': offeredAssets.map((e) => e.toJson()).toList(),
+    if (receiveAddress != null) 'receive_address': receiveAddress,
+    'requested_assets': requestedAssets.map((e) => e.toJson()).toList(),
+  };
+}
+
+/// Response with the unsigned offer coin spends
+class MakeOfferUnsignedResponse {
+  MakeOfferUnsignedResponse({required this.coinSpends});
+
+  /// Unsigned coin spends making up the offer
+  final List<CoinSpendJson> coinSpends;
+
+  factory MakeOfferUnsignedResponse.fromJson(Map<String, dynamic> json) =>
+      MakeOfferUnsignedResponse(
+        coinSpends: ((json['coin_spends']) as List)
+            .map(
+              (e) => CoinSpendJson.fromJson((e as Map).cast<String, dynamic>()),
+            )
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+  };
+}
+
 class MintNftAction {
   MintNftAction({
     this.dataHash,
@@ -4437,6 +4584,44 @@ class RedownloadNftResponse {
   Map<String, dynamic> toJson() => {};
 }
 
+/// Re-encrypt every stored secret under a new passphrase
+class RekeyKeychain {
+  RekeyKeychain({this.newPassword, this.oldPassword});
+
+  /// New hex-encoded passphrase to re-encrypt the secrets under.
+  final String? newPassword;
+
+  /// Current hex-encoded passphrase the secrets are encrypted under.
+  final String? oldPassword;
+
+  factory RekeyKeychain.fromJson(Map<String, dynamic> json) => RekeyKeychain(
+    newPassword: json['new_password'] == null
+        ? null
+        : (json['new_password'] as String),
+    oldPassword: json['old_password'] == null
+        ? null
+        : (json['old_password'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (newPassword != null) 'new_password': newPassword,
+    if (oldPassword != null) 'old_password': oldPassword,
+  };
+}
+
+/// Response for re-keying the keychain
+class RekeyKeychainResponse {
+  RekeyKeychainResponse({required this.rekeyed});
+
+  /// Number of secret keys that were re-encrypted.
+  final int rekeyed;
+
+  factory RekeyKeychainResponse.fromJson(Map<String, dynamic> json) =>
+      RekeyKeychainResponse(rekeyed: json['rekeyed'] as int);
+
+  Map<String, dynamic> toJson() => {'rekeyed': rekeyed};
+}
+
 /// Remove a peer from the connection list
 class RemovePeer {
   RemovePeer({required this.ban, required this.ip});
@@ -5462,6 +5647,53 @@ class TakeOfferResponse {
   };
 }
 
+/// Build the coin spends to take an offer without signing them.
+///
+/// Same as [`TakeOffer`] but returns the unsigned coin spends so an external
+/// signer (e.g. a Tangem card) can produce the BLS signatures. Pair with
+/// `required_signatures` for the messages to sign, then `submit_with_signatures`
+/// to aggregate and broadcast the taker spend bundle.
+class TakeOfferUnsigned {
+  TakeOfferUnsigned({required this.fee, required this.offer});
+
+  /// Transaction fee
+  final BigInt fee;
+
+  /// Offer string to accept
+  final String offer;
+
+  factory TakeOfferUnsigned.fromJson(Map<String, dynamic> json) =>
+      TakeOfferUnsigned(
+        fee: ((json['fee']) is String
+            ? BigInt.parse(json['fee'] as String)
+            : BigInt.from((json['fee'] as num).toInt())),
+        offer: json['offer'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {'fee': fee.toString(), 'offer': offer};
+}
+
+/// Response with the unsigned taker coin spends
+class TakeOfferUnsignedResponse {
+  TakeOfferUnsignedResponse({required this.coinSpends});
+
+  /// Unsigned coin spends for taking the offer
+  final List<CoinSpendJson> coinSpends;
+
+  factory TakeOfferUnsignedResponse.fromJson(Map<String, dynamic> json) =>
+      TakeOfferUnsignedResponse(
+        coinSpends: ((json['coin_spends']) as List)
+            .map(
+              (e) => CoinSpendJson.fromJson((e as Map).cast<String, dynamic>()),
+            )
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'coin_spends': coinSpends.map((e) => e.toJson()).toList(),
+  };
+}
+
 class TokenRecord {
   TokenRecord({
     this.assetId,
@@ -5910,6 +6142,30 @@ class Unit {
   Map<String, dynamic> toJson() => {'precision': precision, 'ticker': ticker};
 }
 
+/// Set the in-memory passphrase used to encrypt/decrypt keychain secrets
+class UnlockKeychain {
+  UnlockKeychain({this.password});
+
+  /// Hex-encoded passphrase bytes. Empty string means no passphrase.
+  final String? password;
+
+  factory UnlockKeychain.fromJson(Map<String, dynamic> json) => UnlockKeychain(
+    password: json['password'] == null ? null : (json['password'] as String),
+  );
+
+  Map<String, dynamic> toJson() => {if (password != null) 'password': password};
+}
+
+/// Response for unlocking the keychain
+class UnlockKeychainResponse {
+  const UnlockKeychainResponse();
+
+  factory UnlockKeychainResponse.fromJson(Map<String, dynamic> json) =>
+      UnlockKeychainResponse();
+
+  Map<String, dynamic> toJson() => {};
+}
+
 /// Update a `CAT` token's metadata and visibility
 class UpdateCat {
   UpdateCat({required this.record});
@@ -6300,6 +6556,16 @@ class SageApi {
     return DeleteUserThemeResponse.fromJson(json);
   }
 
+  /// Assemble and encode an offer from externally signed coin spends.
+  ///
+  /// Counterpart to [`MakeOfferUnsigned`]: takes the coin spends and the BLS
+  /// signatures produced by an external signer (e.g. a Tangem card), aggregates
+  /// them into a spend bundle, and encodes it as a bech32 offer string.
+  Future<EncodeOfferResponse> encodeOffer(EncodeOffer request) async {
+    final json = await _client.callJson('encode_offer', request.toJson());
+    return EncodeOfferResponse.fromJson(json);
+  }
+
   /// Exercise options
   Future<TransactionResponse> exerciseOptions(ExerciseOptions request) async {
     final json = await _client.callJson('exercise_options', request.toJson());
@@ -6657,6 +6923,24 @@ class SageApi {
     return MakeOfferResponse.fromJson(json);
   }
 
+  /// Build the offer's coin spends without signing them.
+  ///
+  /// Same inputs as [`MakeOffer`], but instead of signing in-process and
+  /// returning an encoded offer, it returns the unsigned coin spends so an
+  /// external signer (e.g. a Tangem card, which spends the
+  /// `p2_delegated_conditions` / "arbor" puzzle) can produce the BLS
+  /// signatures. Pair with `required_signatures` to get the messages to sign,
+  /// then `encode_offer` to assemble and encode the finished offer.
+  Future<MakeOfferUnsignedResponse> makeOfferUnsigned(
+    MakeOfferUnsigned request,
+  ) async {
+    final json = await _client.callJson(
+      'make_offer_unsigned',
+      request.toJson(),
+    );
+    return MakeOfferUnsignedResponse.fromJson(json);
+  }
+
   /// Mint a new option
   Future<MintOptionResponse> mintOption(MintOption request) async {
     final json = await _client.callJson('mint_option', request.toJson());
@@ -6690,6 +6974,12 @@ class SageApi {
   Future<RedownloadNftResponse> redownloadNft(RedownloadNft request) async {
     final json = await _client.callJson('redownload_nft', request.toJson());
     return RedownloadNftResponse.fromJson(json);
+  }
+
+  /// Re-encrypt every stored secret under a new passphrase
+  Future<RekeyKeychainResponse> rekeyKeychain(RekeyKeychain request) async {
+    final json = await _client.callJson('rekey_keychain', request.toJson());
+    return RekeyKeychainResponse.fromJson(json);
   }
 
   /// Remove a peer from the connection list
@@ -6871,6 +7161,22 @@ class SageApi {
     return TakeOfferResponse.fromJson(json);
   }
 
+  /// Build the coin spends to take an offer without signing them.
+  ///
+  /// Same as [`TakeOffer`] but returns the unsigned coin spends so an external
+  /// signer (e.g. a Tangem card) can produce the BLS signatures. Pair with
+  /// `required_signatures` for the messages to sign, then `submit_with_signatures`
+  /// to aggregate and broadcast the taker spend bundle.
+  Future<TakeOfferUnsignedResponse> takeOfferUnsigned(
+    TakeOfferUnsigned request,
+  ) async {
+    final json = await _client.callJson(
+      'take_offer_unsigned',
+      request.toJson(),
+    );
+    return TakeOfferUnsignedResponse.fromJson(json);
+  }
+
   /// Transfer DIDs to a new address
   Future<TransactionResponse> transferDids(TransferDids request) async {
     final json = await _client.callJson('transfer_dids', request.toJson());
@@ -6887,6 +7193,12 @@ class SageApi {
   Future<TransactionResponse> transferOptions(TransferOptions request) async {
     final json = await _client.callJson('transfer_options', request.toJson());
     return TransactionResponse.fromJson(json);
+  }
+
+  /// Set the in-memory passphrase used to encrypt/decrypt keychain secrets
+  Future<UnlockKeychainResponse> unlockKeychain(UnlockKeychain request) async {
+    final json = await _client.callJson('unlock_keychain', request.toJson());
+    return UnlockKeychainResponse.fromJson(json);
   }
 
   /// Update a `CAT` token's metadata and visibility
@@ -7056,6 +7368,12 @@ const List<SageEndpoint> kSageEndpoints = [
     'Themes',
     'Delete a theme NFT from the wallet',
     '{"nft_id": ""}',
+  ),
+  SageEndpoint(
+    'encode_offer',
+    'Offers',
+    'Assemble and encode an offer from externally signed coin spends.  Counterpart to [`MakeOfferUnsigned`]: takes the coin spends and the BLS signatures produced by an external signer (e.g. a Tangem card), aggregates them into a spend bundle, and encodes it as a bech32 offer string.',
+    '{"coin_spends": [], "signatures": []}',
   ),
   SageEndpoint(
     'exercise_options',
@@ -7297,6 +7615,12 @@ const List<SageEndpoint> kSageEndpoints = [
     '{"fee": "0", "offered_assets": [], "requested_assets": []}',
   ),
   SageEndpoint(
+    'make_offer_unsigned',
+    'Offers',
+    'Build the offer\'s coin spends without signing them.  Same inputs as [`MakeOffer`], but instead of signing in-process and returning an encoded offer, it returns the unsigned coin spends so an external signer (e.g. a Tangem card, which spends the `p2_delegated_conditions` / "arbor" puzzle) can produce the BLS signatures. Pair with `required_signatures` to get the messages to sign, then `encode_offer` to assemble and encode the finished offer.',
+    '{"fee": "0", "offered_assets": [], "requested_assets": []}',
+  ),
+  SageEndpoint(
     'mint_option',
     'Options',
     'Mint a new option',
@@ -7325,6 +7649,12 @@ const List<SageEndpoint> kSageEndpoints = [
     'NFTs',
     'Re-download an `NFT`\'s data and metadata from its URIs',
     '{"nft_id": "nft1..."}',
+  ),
+  SageEndpoint(
+    'rekey_keychain',
+    'Authentication & Keys',
+    'Re-encrypt every stored secret under a new passphrase',
+    '{}',
   ),
   SageEndpoint(
     'remove_peer',
@@ -7471,6 +7801,12 @@ const List<SageEndpoint> kSageEndpoints = [
     '{"fee": "0", "offer": ""}',
   ),
   SageEndpoint(
+    'take_offer_unsigned',
+    'Offers',
+    'Build the coin spends to take an offer without signing them.  Same as [`TakeOffer`] but returns the unsigned coin spends so an external signer (e.g. a Tangem card) can produce the BLS signatures. Pair with `required_signatures` for the messages to sign, then `submit_with_signatures` to aggregate and broadcast the taker spend bundle.',
+    '{"fee": "0", "offer": ""}',
+  ),
+  SageEndpoint(
     'transfer_dids',
     'DIDs',
     'Transfer DIDs to a new address',
@@ -7487,6 +7823,12 @@ const List<SageEndpoint> kSageEndpoints = [
     'Options',
     'Transfer options to another address',
     '{"address": "", "fee": "0", "option_ids": []}',
+  ),
+  SageEndpoint(
+    'unlock_keychain',
+    'Authentication & Keys',
+    'Set the in-memory passphrase used to encrypt/decrypt keychain secrets',
+    '{}',
   ),
   SageEndpoint(
     'update_cat',

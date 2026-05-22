@@ -10,7 +10,7 @@ final res = await sage.api.generateMnemonic(GenerateMnemonic(use24Words: true));
 print(res.mnemonic);
 ```
 
-**107 endpoints**, 229 models, 12 enums.
+**112 endpoints**, 239 models, 12 enums.
 
 ## Endpoints
 
@@ -159,6 +159,17 @@ _No request fields._
 
 Returns `LogoutResponse`.
 
+#### `rekeyKeychain`
+
+Re-encrypt every stored secret under a new passphrase
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `newPassword` | `String` | no | New hex-encoded passphrase to re-encrypt the secrets under. |
+| `oldPassword` | `String` | no | Current hex-encoded passphrase the secrets are encrypted under. |
+
+Returns `RekeyKeychainResponse`.
+
 #### `renameKey`
 
 Rename a wallet key
@@ -180,6 +191,16 @@ Set wallet emoji
 | `fingerprint` | `int` | yes | Wallet fingerprint |
 
 Returns `SetWalletEmojiResponse`.
+
+#### `unlockKeychain`
+
+Set the in-memory passphrase used to encrypt/decrypt keychain secrets
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `password` | `String` | no | Hex-encoded passphrase bytes. Empty string means no passphrase. |
+
+Returns `UnlockKeychainResponse`.
 
 ### CAT Tokens
 
@@ -681,6 +702,22 @@ Delete an offer
 
 Returns `DeleteOfferResponse`.
 
+#### `encodeOffer`
+
+Assemble and encode an offer from externally signed coin spends.
+
+Counterpart to [`MakeOfferUnsigned`]: takes the coin spends and the BLS
+signatures produced by an external signer (e.g. a Tangem card), aggregates
+them into a spend bundle, and encodes it as a bech32 offer string.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `autoImport` | `bool` | no | Whether to automatically import the offer into the local database |
+| `coinSpends` | `List<CoinSpendJson>` | yes | Coin spends that were signed |
+| `signatures` | `List<String>` | yes | Hex-encoded BLS signatures to aggregate (order does not matter) |
+
+Returns `EncodeOfferResponse`.
+
 #### `getOffer`
 
 Get a specific offer
@@ -735,6 +772,28 @@ Create a new offer
 
 Returns `MakeOfferResponse`.
 
+#### `makeOfferUnsigned`
+
+Build the offer's coin spends without signing them.
+
+Same inputs as [`MakeOffer`], but instead of signing in-process and
+returning an encoded offer, it returns the unsigned coin spends so an
+external signer (e.g. a Tangem card, which spends the
+`p2_delegated_conditions` / "arbor" puzzle) can produce the BLS
+signatures. Pair with `required_signatures` to get the messages to sign,
+then `encode_offer` to assemble and encode the finished offer.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `coinIds` | `List<String>` | no | Optional specific coin IDs to use for the offer instead of auto-selecting |
+| `expiresAtSecond` | `int` | no | Optional expiration timestamp |
+| `fee` | `BigInt` | yes | Transaction fee |
+| `offeredAssets` | `List<OfferAmount>` | yes | Assets offered in exchange |
+| `receiveAddress` | `String` | no | Optional receive address |
+| `requestedAssets` | `List<OfferAmount>` | yes | Assets requested in the offer |
+
+Returns `MakeOfferUnsignedResponse`.
+
 #### `takeOffer`
 
 Accept an offer
@@ -746,6 +805,22 @@ Accept an offer
 | `offer` | `String` | yes | Offer string to accept |
 
 Returns `TakeOfferResponse`.
+
+#### `takeOfferUnsigned`
+
+Build the coin spends to take an offer without signing them.
+
+Same as [`TakeOffer`] but returns the unsigned coin spends so an external
+signer (e.g. a Tangem card) can produce the BLS signatures. Pair with
+`required_signatures` for the messages to sign, then `submit_with_signatures`
+to aggregate and broadcast the taker spend bundle.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `fee` | `BigInt` | yes | Transaction fee |
+| `offer` | `String` | yes | Offer string to accept |
+
+Returns `TakeOfferUnsignedResponse`.
 
 #### `viewOffer`
 
