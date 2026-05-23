@@ -2560,6 +2560,57 @@ class GetPendingTransactionsResponse {
   };
 }
 
+/// Probe multiple wallets for an NFT minted by any of a list of DIDs,
+/// without switching the active session. Each fingerprint's local
+/// SQLite DB is opened directly; the active wallet stays as-is and
+/// sync is undisturbed. Used to detect "premium" entitlement NFTs
+/// across imported seeds in a single round trip — pass every minter
+/// DID that grants the entitlement so a single call covers them all.
+class GetPremiumNfts {
+  GetPremiumNfts({required this.fingerprints, required this.minterDidHashes});
+
+  /// Wallet fingerprints to probe. Missing/never-synced wallets are skipped.
+  final List<int> fingerprints;
+
+  /// Minter DID puzzlehashes, hex-encoded (32 bytes each, optional `0x`
+  /// prefix). A wallet matches if it owns at least one NFT whose minter
+  /// hash is in this list. Empty list returns no matches.
+  final List<String> minterDidHashes;
+
+  factory GetPremiumNfts.fromJson(Map<String, dynamic> json) => GetPremiumNfts(
+    fingerprints: ((json['fingerprints']) as List).cast<int>(),
+    minterDidHashes: ((json['minter_did_hashes']) as List).cast<String>(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'fingerprints': fingerprints,
+    'minter_did_hashes': minterDidHashes,
+  };
+}
+
+/// Response with one entry per (wallet, minter) pair that owns at least
+/// one matching premium NFT.
+class GetPremiumNftsResponse {
+  GetPremiumNftsResponse({required this.matches});
+
+  /// Matching (wallet, minter) pairs.
+  final List<PremiumNftMatch> matches;
+
+  factory GetPremiumNftsResponse.fromJson(Map<String, dynamic> json) =>
+      GetPremiumNftsResponse(
+        matches: ((json['matches']) as List)
+            .map(
+              (e) =>
+                  PremiumNftMatch.fromJson((e as Map).cast<String, dynamic>()),
+            )
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'matches': matches.map((e) => e.toJson()).toList(),
+  };
+}
+
 /// Get wallet secret key
 class GetSecretKey {
   GetSecretKey({required this.fingerprint});
@@ -4558,6 +4609,38 @@ class PerformDatabaseMaintenanceResponse {
     'vacuum_duration_ms': vacuumDurationMs,
     'wal_checkpoint_duration_ms': walCheckpointDurationMs,
     'wal_pages_checkpointed': walPagesCheckpointed,
+  };
+}
+
+/// A single premium NFT hit: the wallet that holds it, the minter DID
+/// that granted the entitlement, and the NFT's launcher hash.
+class PremiumNftMatch {
+  PremiumNftMatch({
+    required this.fingerprint,
+    required this.launcherId,
+    required this.minterDidHash,
+  });
+
+  /// Wallet fingerprint that owns the NFT.
+  final int fingerprint;
+
+  /// NFT launcher / asset hash, hex-encoded (no prefix).
+  final String launcherId;
+
+  /// Minter DID puzzlehash that matched, hex-encoded (no prefix).
+  final String minterDidHash;
+
+  factory PremiumNftMatch.fromJson(Map<String, dynamic> json) =>
+      PremiumNftMatch(
+        fingerprint: json['fingerprint'] as int,
+        launcherId: json['launcher_id'] as String,
+        minterDidHash: json['minter_did_hash'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'fingerprint': fingerprint,
+    'launcher_id': launcherId,
+    'minter_did_hash': minterDidHash,
   };
 }
 
@@ -6803,6 +6886,17 @@ class SageApi {
     return GetPendingTransactionsResponse.fromJson(json);
   }
 
+  /// Probe multiple wallets for an NFT minted by any of a list of DIDs,
+  /// without switching the active session. Each fingerprint's local
+  /// SQLite DB is opened directly; the active wallet stays as-is and
+  /// sync is undisturbed. Used to detect "premium" entitlement NFTs
+  /// across imported seeds in a single round trip — pass every minter
+  /// DID that grants the entitlement so a single call covers them all.
+  Future<GetPremiumNftsResponse> getPremiumNfts(GetPremiumNfts request) async {
+    final json = await _client.callJson('get_premium_nfts', request.toJson());
+    return GetPremiumNftsResponse.fromJson(json);
+  }
+
   /// Get wallet secret key
   Future<GetSecretKeyResponse> getSecretKey(GetSecretKey request) async {
     final json = await _client.callJson('get_secret_key', request.toJson());
@@ -7526,6 +7620,12 @@ const List<SageEndpoint> kSageEndpoints = [
     'Transactions',
     'Get pending transactions',
     '{}',
+  ),
+  SageEndpoint(
+    'get_premium_nfts',
+    'NFTs',
+    'Probe multiple wallets for an NFT minted by any of a list of DIDs, without switching the active session. Each fingerprint\'s local SQLite DB is opened directly; the active wallet stays as-is and sync is undisturbed. Used to detect "premium" entitlement NFTs across imported seeds in a single round trip — pass every minter DID that grants the entitlement so a single call covers them all.',
+    '{"fingerprints": [], "minter_did_hashes": []}',
   ),
   SageEndpoint(
     'get_secret_key',
