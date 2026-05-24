@@ -69,5 +69,18 @@ export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$NDK_BIN/armv7a-linux-androi
 export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$NDK_BIN/x86_64-linux-android${ANDROID_API}-clang"
 export CARGO_TARGET_I686_LINUX_ANDROID_LINKER="$NDK_BIN/i686-linux-android${ANDROID_API}-clang"
 
+# Google Play 16 KB page-size requirement (effective 2025-11-01 for apps targeting
+# Android 15+): all .so files on 64-bit ABIs must have LOAD segments aligned to
+# 16384. Rust's Android linker still defaults to 4 KB, so libsage_flutter_binding.so
+# fails the check; pass -Wl,-z,max-page-size=16384 via RUSTFLAGS. Cargokit reads
+# CARGO_ENCODED_RUSTFLAGS and appends its libgcc workaround (US=0x1f separator),
+# so injecting it here propagates to every consumer of the binding.
+RUSTFLAGS_16K=$'-C\x1flink-arg=-Wl,-z,max-page-size=16384'
+if [ -n "${CARGO_ENCODED_RUSTFLAGS:-}" ]; then
+  export CARGO_ENCODED_RUSTFLAGS="${CARGO_ENCODED_RUSTFLAGS}"$'\x1f'"${RUSTFLAGS_16K}"
+else
+  export CARGO_ENCODED_RUSTFLAGS="${RUSTFLAGS_16K}"
+fi
+
 echo "Android env ready: NDK=$NDK API=$ANDROID_API"
 set +u
