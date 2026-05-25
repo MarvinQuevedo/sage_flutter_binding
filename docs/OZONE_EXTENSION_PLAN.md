@@ -1,21 +1,25 @@
 # Ozone Extension — Plan de Implementación
 
-> **Estado:** Planificación. Decisiones de arquitectura confirmadas, listo para empezar.
+> **Estado:** Planificación. Decisiones de arquitectura confirmadas, scaffold creado.
 > **Fecha:** 2026-05-25
 > **Autor:** Marvin + Claude
-> **Repos a crear:**
-> - `~/Projects/Ozone/ozone-extension/` (nuevo)
-> - `~/Projects/Ozone/fork/sage-web/` (clon independiente de `xch-dev/sage`)
+> **Layout:**
+> - Mismo repo `sage_flutter_binding`, branch `web/ozone-extension` (NO se mergea a main).
+> - Worktree: `~/Projects/Ozone/sage-web/` (branch checked out aquí).
+> - Extensión: `~/Projects/Ozone/sage-web/ozone-web-extension/` (symlinkeada a `~/Projects/Ozone/ozone-web-extension/`).
+> - Sage Rust: `~/Projects/Ozone/sage-web/vendor/sage/` (modificado en este branch para sync coinset + WASM).
 
 ---
 
 ## 0. TL;DR
 
-Construir una extensión de navegador (Chrome MV3) que sea una wallet de Chia minimalista, compatible con el protocolo Goby (CHIP-0002), basada en un fork de Sage compilado a WASM. El sync se hace contra `coinset.org` (HTTP REST) en lugar de peers P2P, porque las extensiones de Chrome no pueden conectar a peers Chia con certificados auto-firmados.
+Construir una extensión de navegador (Chrome MV3) que sea una wallet de Chia minimalista, compatible con el protocolo Goby (CHIP-0002), basada en Sage como librería Rust compilada a WASM. El sync se hace contra `coinset.org` (HTTP REST) en lugar de peers P2P, porque las extensiones de Chrome no pueden conectar a peers Chia con certificados auto-firmados.
+
+**Principio rector — Sage es EL engine:** Sage se trata como **una única librería Rust** que arrancamos como instancia y consultamos vía un único método `request(method, params)`. **Mismo patrón que Ozone usa hoy vía `sage_flutter_binding` por FFI** — solo cambia el transport (WASM en vez de FFI nativa). NO se mezclan otras librerías JS/WASM de Chia preexistentes (NO `chia-bls.js`, NO `clvm-rs.wasm`, NO `greenweb`, NO `chia-wallet-sdk` JS bindings); todo lo que necesita la wallet vive dentro del engine de sage. El cliente JS solo conoce la interfaz `engine.request(method, paramsJson) → resultJson` — exactamente el mismo contrato que Dart usa hoy en `sage_flutter_binding`.
 
 **Stack final:**
 - **Extensión:** WXT + React 19 + TypeScript + Vite
-- **Wallet core:** fork de Sage compilado a `wasm32-unknown-unknown` vía `wasm-bindgen`
+- **Wallet core:** Sage como librería Rust, compilada a `wasm32-unknown-unknown` vía `wasm-bindgen`, expuesta como **un solo objeto engine** con dispatch único
 - **Sync:** REST contra `api.coinset.org` (con fallback a `kraken.fireacademy.io/leaflet`)
 - **Storage:** IndexedDB (vía trait `Storage` abstraída del backend SQLite de Sage)
 - **Protocolo dApp:** `window.chia` (Goby-compatible / CHIP-0002)
@@ -583,9 +587,11 @@ Reusar las Zod schemas de `vendor/sage/src/walletconnect/commands.ts` para valid
 
 ---
 
-## 6. WASM build pipeline
+## 6. WASM build pipeline — Sage como engine único
 
-### 6.1 Crate `sage-wasm` (nuevo en `fork/sage-web`)
+**Patrón rector:** copiar exactamente el contrato que `sage_flutter_binding` expone hoy a Dart vía FFI: el binding tiene **un solo entry point de dispatch** (`request(method_name, params_json) → result_json`). Hacemos lo mismo en WASM. Sage no se trocea en 110 exports separados — eso multiplicaría superficie de binding, bundle size y mantenimiento. Es **un engine único**, igual que en Ozone móvil.
+
+### 6.1 Crate `sage-wasm` (nuevo en `vendor/sage/crates/sage-wasm`)
 
 `crates/sage-wasm/Cargo.toml`:
 ```toml
@@ -600,15 +606,15 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["coinset-sync"]
 coinset-sync = ["sage-wallet/coinset-sync"]
+wasm = ["sage-wallet/wasm", "sage-database/wasm"]
 
 [dependencies]
-sage-wallet = { path = "../sage-wallet", default-features = false, features = ["coinset-sync", "wasm"] }
-sage-database = { path = "../sage-database", default-features = false }
+sage = { path = "../sage", default-features = false, features = ["coinset-sync", "wasm"] }
 sage-api = { path = "../sage-api" }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 serde = { version = "1", features = ["derive"] }
-serde-wasm-bindgen = "0.6"
+serde_json = "1"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console"] }
 getrandom = { version = "0.2", features = ["js"] }
@@ -617,60 +623,92 @@ console_error_panic_hook = "0.1"
 
 `crates/sage-wasm/src/lib.rs`:
 ```rust
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::future_to_promise;
+
+mod storage_bridge;
+use storage_bridge::JsCallbackStorage;
 
 #[wasm_bindgen(start)]
 pub fn main() {
     console_error_panic_hook::set_once();
 }
 
+/// The Sage engine. One instance per wallet. Mirrors the FFI surface used by
+/// sage_flutter_binding — the JS side talks to it through `request` only.
 #[wasm_bindgen]
 pub struct Sage {
-    inner: Arc<RwLock<sage::Sage>>,
+    inner: Arc<sage::Sage>,
 }
 
 #[wasm_bindgen]
 impl Sage {
+    /// Boot the engine. `storage_callbacks` is a JS object implementing the
+    /// JsCallbackStorage interface (see IdbStorage::asWasmCallbacks() in TS).
     #[wasm_bindgen(constructor)]
     pub fn new(storage_callbacks: JsValue) -> Result<Sage, JsValue> {
         let storage = JsCallbackStorage::from_js(storage_callbacks)?;
-        let inner = sage::Sage::new_with_storage(Arc::new(storage))?;
-        Ok(Sage { inner })
+        let inner = sage::Sage::new_with_storage(Arc::new(storage))
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(Sage { inner: Arc::new(inner) })
     }
 
-    // Para cada endpoint de sage-api, generar un wasm_bindgen export:
+    /// Single dispatch entry point. `method` is a sage-api endpoint name
+    /// (e.g. "login", "send_xch", "make_offer"). `params_json` is a JSON
+    /// string for that endpoint's request type. Returns a JSON string of
+    /// the response type. Errors come back as a rejected Promise with
+    /// `{ code, message, data? }` as JSON.
+    ///
+    /// This is the *only* method the JS side calls — identical contract to
+    /// `sage_flutter_binding::request()` in the Dart binding.
     #[wasm_bindgen]
-    pub async fn login(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        let req: LoginReq = serde_wasm_bindgen::from_value(req)?;
-        let res = self.inner.read().await.login(req).await?;
-        Ok(serde_wasm_bindgen::to_value(&res)?)
+    pub fn request(&self, method: String, params_json: String) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        future_to_promise(async move {
+            let res = sage_api::dispatch(&*inner, &method, &params_json)
+                .await
+                .map_err(|e| {
+                    let body = serde_json::json!({
+                        "code": e.code(),
+                        "message": e.to_string(),
+                    });
+                    JsValue::from_str(&body.to_string())
+                })?;
+            Ok(JsValue::from_str(&res))
+        })
     }
-
-    // ... ~110 más, generados con macro
 }
 ```
 
-**Macro para generar los 110 endpoints automáticamente:**
+The matching server-side dispatch lives in `sage-api`:
 ```rust
-// crates/sage-wasm/src/macro.rs
-macro_rules! wasm_endpoint {
-    ($name:ident, $req:ty, $res:ty) => {
-        #[wasm_bindgen]
-        impl Sage {
-            #[wasm_bindgen]
-            pub async fn $name(&self, req: JsValue) -> Result<JsValue, JsValue> {
-                let req: $req = serde_wasm_bindgen::from_value(req)?;
-                let res = self.inner.read().await.$name(req).await
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-                Ok(serde_wasm_bindgen::to_value(&res)?)
-            }
-        }
-    };
+// crates/sage-api/src/dispatch.rs
+//
+// Already half-exists in sage as the RPC router (sage-rpc/src/lib.rs).
+// We lift it into sage-api so it works without the axum/rustls server.
+pub async fn dispatch(sage: &sage::Sage, method: &str, params_json: &str) -> Result<String, Error> {
+    match method {
+        "login"            => json_call!(sage.login, params_json),
+        "send_xch"         => json_call!(sage.send_xch, params_json),
+        "make_offer"       => json_call!(sage.make_offer, params_json),
+        // ... all 110 endpoints, one line each — no per-endpoint wasm_bindgen
+    }
 }
+```
 
-wasm_endpoint!(login, LoginReq, LoginResp);
-wasm_endpoint!(send_xch, SendXchReq, SendXchResp);
-// ... etc
+**Beneficio:** mismo `dispatch()` se usa por (a) sage-rpc (axum), (b) sage_flutter_binding (FFI), (c) sage-wasm (browser). Una sola superficie, tres transports.
+
+**JS side:**
+```ts
+import init, { Sage } from "@ozone/wallet-wasm";
+
+await init();
+const engine = new Sage(idb.asWasmCallbacks());
+
+// All RPC goes through one call:
+const resJson = await engine.request("send_xch", JSON.stringify({ address, amount, fee }));
+const res = JSON.parse(resJson);
 ```
 
 ### 6.2 Storage callback interface

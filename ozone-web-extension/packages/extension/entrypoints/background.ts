@@ -1,0 +1,60 @@
+// Background service worker — owns the wallet, brokers all RPC.
+//
+// Lifecycle: MV3 SWs are killed after ~30s idle. We re-init lazily on demand
+// and keep the encrypted derived key in chrome.storage.session so unlock survives
+// SW restarts (but not browser close).
+
+import { defineBackground } from "wxt/sandbox";
+import { Errors } from "@ozone/goby-provider/errors";
+import type { ChiaMethod } from "@ozone/goby-provider/types";
+import { handleRpc } from "../src/background/rpc-router";
+import { startSyncLoop } from "../src/background/sync-loop";
+import { ensurePermissions, requireConnected } from "../src/background/permissions";
+
+export default defineBackground(() => {
+  console.log("[Ozone] background starting");
+
+  // Keep-alive + periodic sync trigger
+  chrome.alarms.create("sync", { periodInMinutes: 0.5 });
+  chrome.alarms.create("keepalive", { periodInMinutes: 0.25 });
+
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === "sync") {
+      void startSyncLoop();
+    }
+  });
+
+  chrome.runtime.onInstalled.addListener(() => {
+    console.log("[Ozone] installed");
+  });
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || msg.from !== "content") return false;
+    const origin = sender.origin ?? msg.origin;
+    if (!origin) {
+      sendResponse({ error: Errors.invalidParams("Missing origin").toJSON() });
+      return true;
+    }
+
+    (async () => {
+      try {
+        if (msg.method !== "connect") {
+          requireConnected(origin);
+        }
+        await ensurePermissions(origin, msg.method as ChiaMethod);
+        const result = await handleRpc(origin, msg.method as ChiaMethod, msg.params);
+        sendResponse({ result });
+      } catch (err) {
+        const e = err as Error & { code?: number; data?: unknown };
+        sendResponse({
+          error: {
+            code: e.code ?? -32603,
+            message: e.message ?? String(err),
+            data: e.data,
+          },
+        });
+      }
+    })();
+    return true; // async response
+  });
+});

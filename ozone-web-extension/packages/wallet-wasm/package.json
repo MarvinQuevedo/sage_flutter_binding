@@ -1,0 +1,15 @@
+{
+  "name": "@ozone/wallet-wasm",
+  "version": "0.0.1",
+  "private": true,
+  "description": "WASM bindings for the Sage wallet core. Regenerated via `pnpm wasm:build`.",
+  "type": "module",
+  "main": "./sage_wasm.js",
+  "types": "./sage_wasm.d.ts",
+  "files": [
+    "sage_wasm.js",
+    "sage_wasm.d.ts",
+    "sage_wasm_bg.wasm",
+    "sage_wasm_bg.wasm.d.ts"
+  ]
+}
