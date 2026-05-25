@@ -1,0 +1,17 @@
+[package]
+name = "wasm-coinset-probe"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Direct dep on chia-sdk-coinset (not via chia-wallet-sdk) — the latter
+# unconditionally pulls chia-sdk-client which needs tokio-net.
+chia-sdk-coinset = { version = "0.33.0", default-features = false }
+chia-protocol = { version = "0.36.1", default-features = false }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
