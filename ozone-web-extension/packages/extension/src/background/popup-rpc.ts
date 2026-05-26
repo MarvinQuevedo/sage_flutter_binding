@@ -7,10 +7,12 @@
 
 import { callEngine } from "./engine.js";
 import { setActiveWallet } from "./engine.js";
+import { readSyncState } from "./sync-loop.js";
 
 export type PopupRpcMessage =
   | { from: "popup"; kind: "engine"; method: string; params: unknown }
-  | { from: "popup"; kind: "set-active-wallet"; walletId: string | null };
+  | { from: "popup"; kind: "set-active-wallet"; walletId: string | null }
+  | { from: "popup"; kind: "get-sync-state" };
 
 export type PopupRpcResponse =
   | { ok: true; value: unknown }
@@ -39,6 +41,10 @@ export async function handlePopupMessage(
           await chrome.storage.session.remove("walletId");
         }
         return { ok: true, value: null };
+      }
+      case "get-sync-state": {
+        const state = await readSyncState();
+        return { ok: true, value: state };
       }
     }
   } catch (err) {

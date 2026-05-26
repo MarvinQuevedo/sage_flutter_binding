@@ -27,3 +27,24 @@ export async function setActiveWallet(walletId: string | null): Promise<void> {
     throw new Error(res.error.message);
   }
 }
+
+export interface SyncState {
+  peak_height: number;
+  peak_header_hash: string;
+  synced: boolean;
+  sync_mode: boolean;
+  mempool_size: number;
+  mempool_cost: number;
+  difficulty: number;
+  ticked_at: number;
+  error?: string;
+}
+
+export async function getSyncState(): Promise<SyncState | null> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "get-sync-state" };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) {
+    throw new Error(res.error.message);
+  }
+  return (res.value as SyncState | null) ?? null;
+}

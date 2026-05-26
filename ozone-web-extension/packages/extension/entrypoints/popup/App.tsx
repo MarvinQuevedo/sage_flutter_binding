@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { callEngine, setActiveWallet } from "../../src/popup/engine-client";
+import { callEngine, getSyncState, setActiveWallet } from "../../src/popup/engine-client";
+import type { SyncState } from "../../src/popup/engine-client";
 import {
   getActiveFingerprint,
   listWallets,
@@ -258,12 +259,6 @@ function LockScreen({
   );
 }
 
-interface SyncInfo {
-  peak_height: number;
-  synced: boolean;
-  mempool_size: number;
-}
-
 function HomeScreen({
   wallet,
   onLock,
@@ -272,16 +267,14 @@ function HomeScreen({
   onLock: () => void | Promise<void>;
 }) {
   const [tab, setTab] = useState<"home" | "receive" | "dev">("home");
-  const [sync, setSync] = useState<SyncInfo | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [sync, setSync] = useState<SyncState | null>(null);
 
   const refreshSync = async () => {
     try {
-      const res = await callEngine<SyncInfo>("sync_tick", { endpoint: "mainnet" });
-      setSync(res);
-      setSyncError(null);
-    } catch (err) {
-      setSyncError((err as Error).message);
+      const cached = await getSyncState();
+      setSync(cached);
+    } catch {
+      // ignore — best-effort
     }
   };
 
@@ -289,7 +282,7 @@ function HomeScreen({
     void refreshSync();
     const id = setInterval(() => {
       void refreshSync();
-    }, 30_000);
+    }, 5_000);
     return () => clearInterval(id);
   }, []);
 
@@ -303,7 +296,7 @@ function HomeScreen({
           </p>
         </div>
         <div className="sync-badge">
-          {sync ? (
+          {sync && !sync.error ? (
             <>
               <span className={sync.synced ? "ok" : "warn"}>
                 {sync.synced ? "synced" : "syncing"}
@@ -311,7 +304,7 @@ function HomeScreen({
               <code>#{sync.peak_height.toLocaleString()}</code>
               <span className="muted small">mempool {sync.mempool_size}</span>
             </>
-          ) : syncError ? (
+          ) : sync?.error ? (
             <span className="error small">offline</span>
           ) : (
             <span className="muted small">connecting…</span>
