@@ -84,3 +84,41 @@ export async function forceCoinSync(): Promise<void> {
   const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
   if (!res.ok) throw new Error(res.error.message);
 }
+
+export interface SendXchResult {
+  tx_id: string;
+  status: string;
+  error?: string | null;
+  change_mojos: string;
+}
+
+export interface PickedCoin {
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  derivation_index: number;
+}
+
+/** Pick the smallest unspent coin whose amount covers needed mojos. */
+export function pickCoinForSend(
+  coins: Record<string, { coin_id: string; parent_coin_info: string; puzzle_hash: string; amount: string; spent: boolean }>,
+  phToIndex: Record<string, number>,
+  neededMojos: bigint,
+): PickedCoin | null {
+  const candidates = Object.values(coins)
+    .filter((c) => !c.spent && BigInt(c.amount) >= neededMojos)
+    .filter((c) => phToIndex[c.puzzle_hash] !== undefined);
+  if (candidates.length === 0) return null;
+  // Smallest sufficient coin minimises change fragmentation; if none fits,
+  // pick the largest available (caller can show insufficient).
+  candidates.sort((a, b) => (BigInt(a.amount) < BigInt(b.amount) ? -1 : 1));
+  const c = candidates[0]!;
+  return {
+    coin_id: c.coin_id,
+    parent_coin_info: c.parent_coin_info,
+    puzzle_hash: c.puzzle_hash,
+    amount: c.amount,
+    derivation_index: phToIndex[c.puzzle_hash]!,
+  };
+}

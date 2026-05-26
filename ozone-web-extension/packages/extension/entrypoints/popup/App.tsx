@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
-import { callEngine, getSyncState, setActiveWallet } from "../../src/popup/engine-client";
-import type { SyncState } from "../../src/popup/engine-client";
+import {
+  callEngine,
+  getCoinSnapshot,
+  getSyncState,
+  pickCoinForSend,
+  setActiveWallet,
+  type CoinSnapshot,
+  type SendXchResult,
+  type SyncState,
+} from "../../src/popup/engine-client";
 import {
   getDerivationState,
   setActiveIndex,
@@ -668,8 +676,15 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
     null,
   );
   const [validating, setValidating] = useState(false);
+  const [sending, setSending] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitNote, setSubmitNote] = useState<string | null>(null);
+  const [sent, setSent] = useState<SendXchResult | null>(null);
+  const [snapshot, setSnapshot] = useState<CoinSnapshot | null>(null);
+
+  // Pull the latest local coin snapshot so we can pick a coin to spend.
+  useEffect(() => {
+    void getCoinSnapshot(wallet.fingerprint).then(setSnapshot).catch(() => {});
+  }, [wallet.fingerprint]);
 
   useEffect(() => {
     if (!to.trim()) {
@@ -681,13 +696,17 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
     setValidating(true);
     const t = setTimeout(async () => {
       try {
-        const res = await callEngine<{ puzzle_hash: string; prefix: string }>(
-          "decode_address",
-          { address: to.trim() },
-        );
+        const res = await callEngine<
+          { valid: boolean; puzzle_hash?: string; prefix?: string; error?: string }
+        >("check_address", { address: to.trim() });
         if (!cancelled) {
-          setAddressValid(true);
-          setAddressInfo(res);
+          if (res.valid && res.puzzle_hash && res.prefix) {
+            setAddressValid(true);
+            setAddressInfo({ puzzle_hash: res.puzzle_hash, prefix: res.prefix });
+          } else {
+            setAddressValid(false);
+            setAddressInfo(null);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -706,21 +725,66 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
 
   const amountNum = parseFloat(amount || "0");
   const feeNum = parseFloat(fee || "0");
-  const totalNeeded = amountNum + feeNum;
+  const amountMojos = BigInt(Math.round(amountNum * 1_000_000_000_000));
+  const feeMojos = BigInt(Math.round(feeNum * 1_000_000_000_000));
+  const needed = amountMojos + feeMojos;
   const haveEnough = balance
-    ? BigInt(balance.total_unspent_mojos) >=
-      BigInt(Math.round(totalNeeded * 1_000_000_000_000))
+    ? BigInt(balance.total_unspent_mojos) >= needed
+    : false;
+  const haveCoin = snapshot
+    ? Object.values(snapshot.coins).some((c) => !c.spent && BigInt(c.amount) >= needed)
     : false;
 
-  const canReview = addressValid && amountNum > 0 && haveEnough;
+  const canSend = addressValid && amountNum > 0 && haveEnough && haveCoin && !sending;
 
-  const review = () => {
+  const send = async () => {
+    setSending(true);
     setSubmitError(null);
-    setSubmitNote(
-      "Send is wired up to the engine but the on-chain push is still " +
-        "behind the storage bridge refactor. Address + amount + fee validated, " +
-        "but no SpendBundle is broadcast yet. Coming in the next iteration.",
-    );
+    setSent(null);
+    try {
+      // Build a puzzle_hash -> derivation_index lookup from the addresses
+      // we've already derived for the Receive tab. derive_addresses up to
+      // 50 is cheap.
+      const derived = await callEngine<{
+        addresses: { index: number; puzzle_hash: string }[];
+      }>("derive_addresses", {
+        fingerprint: wallet.fingerprint,
+        start: 0,
+        count: 50,
+        testnet: false,
+      });
+      const phToIndex: Record<string, number> = {};
+      for (const a of derived.addresses) {
+        phToIndex[a.puzzle_hash] = a.index;
+      }
+
+      // Refresh snapshot then pick a coin
+      const fresh = await getCoinSnapshot(wallet.fingerprint);
+      const picked = pickCoinForSend(fresh.coins, phToIndex, needed);
+      if (!picked) {
+        setSubmitError(
+          "No single coin in your wallet covers this amount + fee. Coin merging will arrive in a future build.",
+        );
+        return;
+      }
+
+      const result = await callEngine<SendXchResult>("send_xch", {
+        fingerprint: wallet.fingerprint,
+        recipient_address: to.trim(),
+        amount_mojos: amountMojos.toString(),
+        fee_mojos: feeMojos.toString(),
+        input_coin: picked,
+        change_index: picked.derivation_index,
+        testnet: false,
+        broadcast: true,
+      });
+      setSent(result);
+      if (result.error) setSubmitError(result.error);
+    } catch (err) {
+      setSubmitError((err as Error).message);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -756,6 +820,11 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
             insufficient: have {balance.total_unspent_xch} XCH
           </span>
         )}
+        {balance && amountNum > 0 && haveEnough && !haveCoin && (
+          <span className="small warn">
+            No single coin big enough — need to combine first.
+          </span>
+        )}
       </label>
 
       <label className="field">
@@ -767,20 +836,34 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
           value={fee}
           onChange={(e) => setFee(e.target.value)}
         />
-        <span className="muted small">
-          A fee helps your transaction land faster when the mempool is busy.
-        </span>
       </label>
 
-      <button disabled={!canReview} onClick={review}>
-        Review & send
+      <button disabled={!canSend} onClick={() => void send()}>
+        {sending ? "Sending…" : "Send"}
       </button>
 
-      {submitNote && <p className="muted small">{submitNote}</p>}
       {submitError && <p className="error">{submitError}</p>}
+      {sent && (
+        <div className="result">
+          <div>
+            <span className="muted">tx id</span>
+            <code>{sent.tx_id}</code>
+          </div>
+          <div>
+            <span className="muted">status</span>
+            <code className={sent.status === "SUCCESS" ? "ok" : "warn"}>{sent.status}</code>
+          </div>
+          {BigInt(sent.change_mojos ?? "0") > 0n && (
+            <div>
+              <span className="muted">change back to wallet</span>
+              <code>{mojosToXch(sent.change_mojos)} XCH</code>
+            </div>
+          )}
+        </div>
+      )}
 
       <p className="muted small">
-        Sending {wallet.label}: {balance?.total_unspent_xch ?? "—"} XCH available across{" "}
+        Sending from {wallet.label}: {balance?.total_unspent_xch ?? "—"} XCH /{" "}
         {balance?.unspent_coin_count ?? 0} coins.
       </p>
     </div>
