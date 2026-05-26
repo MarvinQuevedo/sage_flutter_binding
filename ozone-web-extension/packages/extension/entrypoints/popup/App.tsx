@@ -4,6 +4,7 @@ import type { SyncState } from "../../src/popup/engine-client";
 import {
   getActiveFingerprint,
   listWallets,
+  removeWallet,
   saveWallet,
   setActiveFingerprint,
   type StoredWallet,
@@ -283,7 +284,7 @@ function HomeScreen({
   wallet: StoredWallet;
   onLock: () => void | Promise<void>;
 }) {
-  const [tab, setTab] = useState<"home" | "receive" | "dev">("home");
+  const [tab, setTab] = useState<"home" | "receive" | "dev" | "settings">("home");
   const [sync, setSync] = useState<SyncState | null>(null);
 
   const refreshSync = async () => {
@@ -348,16 +349,182 @@ function HomeScreen({
         >
           Dev
         </button>
+        <button
+          className={tab === "settings" ? "tab active" : "tab"}
+          onClick={() => setTab("settings")}
+        >
+          Settings
+        </button>
       </nav>
 
       {tab === "home" && <HomeTab />}
       {tab === "receive" && <ReceiveTab wallet={wallet} />}
       {tab === "dev" && <DevTab wallet={wallet} />}
+      {tab === "settings" && <SettingsTab wallet={wallet} sync={sync} onLock={onLock} />}
 
       <button onClick={() => void onLock()} className="lock-btn">
         Lock
       </button>
     </section>
+  );
+}
+
+function SettingsTab({
+  wallet,
+  sync,
+  onLock,
+}: {
+  wallet: StoredWallet;
+  sync: SyncState | null;
+  onLock: () => void | Promise<void>;
+}) {
+  const [revealing, setRevealing] = useState(false);
+  const [revealPwd, setRevealPwd] = useState("");
+  const [revealedMnemonic, setRevealedMnemonic] = useState<string | null>(null);
+  const [revealError, setRevealError] = useState<string | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [copiedFingerprint, setCopiedFingerprint] = useState(false);
+
+  const revealSeed = async () => {
+    setRevealError(null);
+    try {
+      const res = await callEngine<{ mnemonic: string }>("unlock_keychain", {
+        keychain_blob: wallet.keychainBlob,
+        fingerprint: wallet.fingerprint,
+        password: revealPwd,
+      });
+      setRevealedMnemonic(res.mnemonic);
+    } catch (err) {
+      setRevealError((err as Error).message);
+    }
+  };
+
+  const copyFp = async () => {
+    await navigator.clipboard.writeText(wallet.fingerprint.toString());
+    setCopiedFingerprint(true);
+    setTimeout(() => setCopiedFingerprint(false), 1500);
+  };
+
+  const resetWallet = async () => {
+    await removeWallet(wallet.fingerprint);
+    await callEngine("lock_keychain", { fingerprint: wallet.fingerprint });
+    await onLock();
+  };
+
+  return (
+    <div className="tab-body">
+      <h3>Wallet</h3>
+      <div className="result">
+        <div>
+          <span className="muted">label</span>
+          <code>{wallet.label}</code>
+        </div>
+        <div onClick={() => void copyFp()} style={{ cursor: "pointer" }}>
+          <span className="muted">fingerprint {copiedFingerprint && "· copied"}</span>
+          <code>{wallet.fingerprint}</code>
+        </div>
+        <div>
+          <span className="muted">created</span>
+          <code>{new Date(wallet.createdAt).toLocaleString()}</code>
+        </div>
+      </div>
+
+      <h3>Network</h3>
+      <div className="result">
+        <div>
+          <span className="muted">endpoint</span>
+          <code>api.coinset.org · mainnet</code>
+        </div>
+        {sync && (
+          <div>
+            <span className="muted">peak height</span>
+            <code>#{sync.peak_height.toLocaleString()}</code>
+          </div>
+        )}
+      </div>
+
+      <h3>Recovery phrase</h3>
+      {!revealing && !revealedMnemonic && (
+        <button className="secondary" onClick={() => setRevealing(true)}>
+          Show recovery phrase
+        </button>
+      )}
+      {revealing && !revealedMnemonic && (
+        <>
+          <p className="muted">Enter your password to view the 24-word seed.</p>
+          <input
+            type="password"
+            placeholder="Password"
+            value={revealPwd}
+            onChange={(e) => setRevealPwd(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && revealPwd) void revealSeed();
+            }}
+          />
+          {revealError && <p className="error">{revealError}</p>}
+          <div className="row">
+            <button
+              className="secondary"
+              onClick={() => {
+                setRevealing(false);
+                setRevealPwd("");
+                setRevealError(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button onClick={() => void revealSeed()} disabled={!revealPwd}>
+              Reveal
+            </button>
+          </div>
+        </>
+      )}
+      {revealedMnemonic && (
+        <>
+          <div className="seed-grid">
+            {revealedMnemonic.split(/\s+/).map((w, i) => (
+              <span className="seed-pill" key={i}>
+                <span className="seed-pill-index">{i + 1}</span>
+                <span className="seed-pill-word">{w}</span>
+              </span>
+            ))}
+          </div>
+          <button
+            className="secondary"
+            onClick={() => {
+              setRevealedMnemonic(null);
+              setRevealPwd("");
+              setRevealing(false);
+            }}
+          >
+            Hide
+          </button>
+        </>
+      )}
+
+      <h3>Danger zone</h3>
+      {!confirmingReset && (
+        <button className="danger" onClick={() => setConfirmingReset(true)}>
+          Remove this wallet
+        </button>
+      )}
+      {confirmingReset && (
+        <>
+          <p className="muted">
+            This deletes the encrypted seed from this browser. Make sure you have your
+            recovery phrase before continuing.
+          </p>
+          <div className="row">
+            <button className="secondary" onClick={() => setConfirmingReset(false)}>
+              Cancel
+            </button>
+            <button className="danger" onClick={() => void resetWallet()}>
+              Remove
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
