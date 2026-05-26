@@ -10,8 +10,10 @@ import {
   type PageResponseMessage,
 } from "./types.js";
 
-declare const browser: typeof chrome;
-const runtime = (typeof browser !== "undefined" ? browser : chrome).runtime;
+// `chrome` is the standard WebExtension global on Chrome / Edge / current
+// Firefox. Content scripts are bundled per-target by WXT; this single source
+// works for both manifest builds.
+const runtime = chrome.runtime;
 
 /**
  * Install the bridge.

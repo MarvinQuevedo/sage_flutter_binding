@@ -4,15 +4,26 @@
 // and keep the encrypted derived key in chrome.storage.session so unlock survives
 // SW restarts (but not browser close).
 
-import { defineBackground } from "wxt/sandbox";
+import { defineBackground } from "wxt/utils/define-background";
 import { Errors } from "@ozone/goby-provider/errors";
 import type { ChiaMethod } from "@ozone/goby-provider/types";
+import { setActiveWallet } from "../src/background/engine";
 import { handleRpc } from "../src/background/rpc-router";
 import { startSyncLoop } from "../src/background/sync-loop";
 import { ensurePermissions, requireConnected } from "../src/background/permissions";
 
 export default defineBackground(() => {
   console.log("[Ozone] background starting");
+
+  // Restore the active wallet from session storage (survives SW death but not
+  // browser close). Setting walletId triggers IdbStorage open on the next
+  // engine call.
+  void chrome.storage.session.get("walletId").then((data) => {
+    if (typeof data.walletId === "string" && data.walletId.length > 0) {
+      setActiveWallet(data.walletId);
+      console.log("[Ozone] restored wallet:", data.walletId);
+    }
+  });
 
   // Keep-alive + periodic sync trigger
   chrome.alarms.create("sync", { periodInMinutes: 0.5 });

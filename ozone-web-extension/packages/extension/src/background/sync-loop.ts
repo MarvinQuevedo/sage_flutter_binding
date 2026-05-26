@@ -1,19 +1,34 @@
 // Sync loop — polls coinset.org and updates the wallet store.
-// Stub: this will delegate to the WASM module once it's built and connected
-// to IdbStorage callbacks.
+//
+// Triggered by a chrome.alarms tick (every 30s by default). The actual sync
+// algorithm lives in the WASM engine; this file just kicks it off and tracks
+// in-flight state so two ticks don't stomp on each other.
+
+import { callEngine } from "./engine.js";
 
 let running = false;
+let lastError: string | null = null;
 
-export async function startSyncLoop() {
+export async function startSyncLoop(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    // TODO:
-    // 1. await ensureSageInstance(): boot WASM if not already
-    // 2. call sage.request("sync_now", {}) — Rust drives the polling
-    // 3. emit progress events to popup if open
-    console.log("[Ozone] sync tick — stub");
+    await callEngine("sync_tick", {});
+    lastError = null;
+  } catch (err) {
+    // NotImplemented is expected today — log and move on.
+    const e = err as Error & { code?: number };
+    if (e.code === 4999) {
+      // not implemented yet — silent
+    } else {
+      lastError = e.message;
+      console.error("[Ozone] sync tick failed:", e);
+    }
   } finally {
     running = false;
   }
+}
+
+export function lastSyncError(): string | null {
+  return lastError;
 }

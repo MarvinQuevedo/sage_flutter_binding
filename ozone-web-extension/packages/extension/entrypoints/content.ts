@@ -1,7 +1,7 @@
 // Content script — runs in ISOLATED world. Injects inpage.js into MAIN world
 // and bridges window.postMessage ↔ chrome.runtime.sendMessage.
 
-import { defineContentScript } from "wxt/sandbox";
+import { defineContentScript } from "wxt/utils/define-content-script";
 import { installContentBridge } from "@ozone/goby-provider";
 
 export default defineContentScript({
