@@ -100,9 +100,27 @@ export interface PickedCoin {
   derivation_index: number;
 }
 
+type CandidateCoin = {
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  spent: boolean;
+};
+
+function toPicked(c: CandidateCoin, idx: number): PickedCoin {
+  return {
+    coin_id: c.coin_id,
+    parent_coin_info: c.parent_coin_info,
+    puzzle_hash: c.puzzle_hash,
+    amount: c.amount,
+    derivation_index: idx,
+  };
+}
+
 /** Pick the smallest unspent coin whose amount covers needed mojos. */
 export function pickCoinForSend(
-  coins: Record<string, { coin_id: string; parent_coin_info: string; puzzle_hash: string; amount: string; spent: boolean }>,
+  coins: Record<string, CandidateCoin>,
   phToIndex: Record<string, number>,
   neededMojos: bigint,
 ): PickedCoin | null {
@@ -110,15 +128,32 @@ export function pickCoinForSend(
     .filter((c) => !c.spent && BigInt(c.amount) >= neededMojos)
     .filter((c) => phToIndex[c.puzzle_hash] !== undefined);
   if (candidates.length === 0) return null;
-  // Smallest sufficient coin minimises change fragmentation; if none fits,
-  // pick the largest available (caller can show insufficient).
   candidates.sort((a, b) => (BigInt(a.amount) < BigInt(b.amount) ? -1 : 1));
-  const c = candidates[0]!;
-  return {
-    coin_id: c.coin_id,
-    parent_coin_info: c.parent_coin_info,
-    puzzle_hash: c.puzzle_hash,
-    amount: c.amount,
-    derivation_index: phToIndex[c.puzzle_hash]!,
-  };
+  return toPicked(candidates[0]!, phToIndex[candidates[0]!.puzzle_hash]!);
+}
+
+/**
+ * Select multiple coins that together cover `neededMojos`. Largest-first to
+ * minimise the number of inputs. Returns null when the unspent total is
+ * still insufficient.
+ */
+export function pickCoinsForSendMulti(
+  coins: Record<string, CandidateCoin>,
+  phToIndex: Record<string, number>,
+  neededMojos: bigint,
+  maxInputs = 50,
+): PickedCoin[] | null {
+  const available = Object.values(coins)
+    .filter((c) => !c.spent && phToIndex[c.puzzle_hash] !== undefined)
+    .sort((a, b) => (BigInt(b.amount) > BigInt(a.amount) ? 1 : -1));
+  const picked: PickedCoin[] = [];
+  let running = 0n;
+  for (const c of available) {
+    if (running >= neededMojos) break;
+    if (picked.length >= maxInputs) break;
+    picked.push(toPicked(c, phToIndex[c.puzzle_hash]!));
+    running += BigInt(c.amount);
+  }
+  if (running < neededMojos) return null;
+  return picked;
 }

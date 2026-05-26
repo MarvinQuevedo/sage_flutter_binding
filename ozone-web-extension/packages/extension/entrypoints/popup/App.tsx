@@ -3,7 +3,7 @@ import {
   callEngine,
   getCoinSnapshot,
   getSyncState,
-  pickCoinForSend,
+  pickCoinsForSendMulti,
   setActiveWallet,
   type CoinSnapshot,
   type SendXchResult,
@@ -731,11 +731,7 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
   const haveEnough = balance
     ? BigInt(balance.total_unspent_mojos) >= needed
     : false;
-  const haveCoin = snapshot
-    ? Object.values(snapshot.coins).some((c) => !c.spent && BigInt(c.amount) >= needed)
-    : false;
-
-  const canSend = addressValid && amountNum > 0 && haveEnough && haveCoin && !sending;
+  const canSend = addressValid && amountNum > 0 && haveEnough && !sending;
 
   const send = async () => {
     setSending(true);
@@ -758,26 +754,29 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
         phToIndex[a.puzzle_hash] = a.index;
       }
 
-      // Refresh snapshot then pick a coin
+      // Refresh snapshot then pick coins (multi-coin combine if needed).
       const fresh = await getCoinSnapshot(wallet.fingerprint);
-      const picked = pickCoinForSend(fresh.coins, phToIndex, needed);
+      const picked = pickCoinsForSendMulti(fresh.coins, phToIndex, needed);
       if (!picked) {
         setSubmitError(
-          "No single coin in your wallet covers this amount + fee. Coin merging will arrive in a future build.",
+          "Wallet balance changed mid-flight. Refresh and try again.",
         );
         return;
       }
 
-      const result = await callEngine<SendXchResult>("send_xch", {
-        fingerprint: wallet.fingerprint,
-        recipient_address: to.trim(),
-        amount_mojos: amountMojos.toString(),
-        fee_mojos: feeMojos.toString(),
-        input_coin: picked,
-        change_index: picked.derivation_index,
-        testnet: false,
-        broadcast: true,
-      });
+      const result = await callEngine<SendXchResult & { input_count?: number }>(
+        "send_xch",
+        {
+          fingerprint: wallet.fingerprint,
+          recipient_address: to.trim(),
+          amount_mojos: amountMojos.toString(),
+          fee_mojos: feeMojos.toString(),
+          input_coins: picked,
+          change_index: picked[0]!.derivation_index,
+          testnet: false,
+          broadcast: true,
+        },
+      );
       setSent(result);
       if (result.error) setSubmitError(result.error);
     } catch (err) {
@@ -818,11 +817,6 @@ function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceIn
         {balance && amountNum > 0 && !haveEnough && (
           <span className="small error">
             insufficient: have {balance.total_unspent_xch} XCH
-          </span>
-        )}
-        {balance && amountNum > 0 && haveEnough && !haveCoin && (
-          <span className="small warn">
-            No single coin big enough — need to combine first.
           </span>
         )}
       </label>
