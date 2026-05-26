@@ -85,6 +85,22 @@ export async function forceCoinSync(): Promise<void> {
   if (!res.ok) throw new Error(res.error.message);
 }
 
+export interface CoinSyncTelemetry {
+  fingerprint: number | null;
+  last_attempt_at: number;
+  last_success_at: number | null;
+  last_error: string | null;
+  last_peak_height: number;
+  last_new_coins: number;
+}
+
+export async function getCoinSyncTelemetry(): Promise<CoinSyncTelemetry | null> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "get-coin-sync-telemetry" };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) throw new Error(res.error.message);
+  return (res.value as CoinSyncTelemetry | null) ?? null;
+}
+
 export interface SendXchResult {
   tx_id: string;
   status: string;

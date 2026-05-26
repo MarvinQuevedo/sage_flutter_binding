@@ -9,6 +9,7 @@
 export interface StoredWallet {
   fingerprint: number;
   keychainBlob: string; // hex
+  masterPublicKey?: string; // hex, 0x-prefixed — enables sync without unlock
   label: string;
   createdAt: number;
 }

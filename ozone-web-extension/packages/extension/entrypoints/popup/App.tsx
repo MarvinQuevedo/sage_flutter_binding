@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   callEngine,
+  forceCoinSync,
   getCoinSnapshot,
+  getCoinSyncTelemetry,
   getSyncState,
   pickCoinsForSendMulti,
   setActiveWallet,
   type CoinSnapshot,
+  type CoinSyncTelemetry,
   type SendXchResult,
   type SyncState,
 } from "../../src/popup/engine-client";
@@ -147,6 +150,7 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
       const importRes = await callEngine<{
         fingerprint: number;
         keychain_blob: string;
+        master_public_key: string;
       }>("import_mnemonic", {
         mnemonic: mnemonic.trim(),
         password,
@@ -155,6 +159,7 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
       const wallet: StoredWallet = {
         fingerprint: importRes.fingerprint,
         keychainBlob: importRes.keychain_blob,
+        masterPublicKey: importRes.master_public_key,
         label: `Wallet ${importRes.fingerprint}`,
         createdAt: Date.now(),
       };
@@ -254,11 +259,22 @@ function LockScreen({
     setBusy(true);
     setError(null);
     try {
-      await callEngine<{ fingerprint: number; mnemonic: string }>("unlock_keychain", {
+      const res = await callEngine<{
+        fingerprint: number;
+        mnemonic: string;
+        master_public_key: string;
+      }>("unlock_keychain", {
         keychain_blob: wallet.keychainBlob,
         fingerprint: wallet.fingerprint,
         password,
       });
+      // Backfill master_public_key for wallets imported before we tracked it.
+      if (!wallet.masterPublicKey && res.master_public_key) {
+        const updated = { ...wallet, masterPublicKey: res.master_public_key };
+        await saveWallet(updated);
+        await onUnlocked(updated);
+        return;
+      }
       await onUnlocked(wallet);
     } catch (err) {
       setError((err as Error).message);
@@ -313,14 +329,16 @@ function HomeScreen({
 }) {
   const [tab, setTab] = useState<"home" | "send" | "receive" | "dev" | "settings">("home");
   const [sync, setSync] = useState<SyncState | null>(null);
+  const [coinTelemetry, setCoinTelemetry] = useState<CoinSyncTelemetry | null>(null);
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   const refreshSync = async () => {
     try {
-      const cached = await getSyncState();
-      setSync(cached);
+      const [s, t] = await Promise.all([getSyncState(), getCoinSyncTelemetry()]);
+      setSync(s);
+      setCoinTelemetry(t);
     } catch {
       // ignore — best-effort
     }
@@ -347,6 +365,9 @@ function HomeScreen({
   useEffect(() => {
     void refreshSync();
     void refreshBalance();
+    // Kick off a coin sync immediately on popup open so the user sees fresh
+    // data without waiting for the next chrome.alarm tick (~30 s).
+    void forceCoinSync().catch(() => {});
     const id = setInterval(() => {
       void refreshSync();
     }, 5_000);
@@ -381,7 +402,17 @@ function HomeScreen({
                 {sync.synced ? "synced" : "syncing"}
               </span>
               <code>#{sync.peak_height.toLocaleString()}</code>
-              <span className="muted small">mempool {sync.mempool_size}</span>
+              {coinTelemetry?.last_success_at ? (
+                <span className="muted small" title={coinTelemetry.last_error ?? ""}>
+                  coins {timeAgo(coinTelemetry.last_success_at)}
+                </span>
+              ) : coinTelemetry?.last_error ? (
+                <span className="error small" title={coinTelemetry.last_error}>
+                  sync err
+                </span>
+              ) : (
+                <span className="muted small">scanning…</span>
+              )}
             </>
           ) : sync?.error ? (
             <span className="error small">offline</span>
@@ -650,6 +681,13 @@ function HomeTab({
       </p>
     </div>
   );
+}
+
+function timeAgo(ts: number): string {
+  const diff = Math.max(0, Date.now() - ts);
+  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  return `${Math.floor(diff / 3_600_000)}h ago`;
 }
 
 function mojosToXch(mojos: string): string {

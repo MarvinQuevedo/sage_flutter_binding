@@ -8,7 +8,7 @@
 import { callEngine } from "./engine.js";
 import { setActiveWallet } from "./engine.js";
 import { clearCoinStore, readCoinStore, totalUnspentMojos, unspentCoinCount } from "./coin-store.js";
-import { tickCoinSync } from "./coin-sync.js";
+import { readSyncTelemetry, tickCoinSync } from "./coin-sync.js";
 import { readSyncState } from "./sync-loop.js";
 
 export type PopupRpcMessage =
@@ -17,7 +17,8 @@ export type PopupRpcMessage =
   | { from: "popup"; kind: "get-sync-state" }
   | { from: "popup"; kind: "get-coin-store"; fingerprint: number }
   | { from: "popup"; kind: "clear-coin-store"; fingerprint: number }
-  | { from: "popup"; kind: "force-coin-sync" };
+  | { from: "popup"; kind: "force-coin-sync" }
+  | { from: "popup"; kind: "get-coin-sync-telemetry" };
 
 export type PopupRpcResponse =
   | { ok: true; value: unknown }
@@ -70,6 +71,10 @@ export async function handlePopupMessage(
       case "force-coin-sync": {
         await tickCoinSync();
         return { ok: true, value: null };
+      }
+      case "get-coin-sync-telemetry": {
+        const t = await readSyncTelemetry();
+        return { ok: true, value: t };
       }
     }
   } catch (err) {
