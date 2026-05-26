@@ -4,41 +4,32 @@
 // the engine on-demand and cache it as a module-scoped singleton. When the SW
 // wakes up, the first call to `getEngine()` re-loads the WASM module.
 //
-// The IdbStorage handle is keyed on a wallet id (fingerprint) that lives in
-// `chrome.storage.session` for the duration of the browser session.
+// We always boot SOMETHING: stateless methods (ping, generate_mnemonic,
+// decode_address, sync_tick, etc.) must work before any wallet is unlocked,
+// so we use a "_bootstrap_" placeholder IndexedDB until the user picks /
+// creates a wallet. Once `setActiveWallet(fingerprint)` is called we tear
+// the bootstrap engine down and recreate it bound to that wallet's DB.
 
 import init, { Sage } from "@ozone/wallet-wasm";
 import { IdbStorage } from "@ozone/storage-idb";
 
+const BOOTSTRAP_WALLET_ID = "_bootstrap_";
+
 let enginePromise: Promise<Sage> | null = null;
-let currentWalletId: string | null = null;
+let currentWalletId: string = BOOTSTRAP_WALLET_ID;
 
 /**
- * Bind the engine to a wallet id. Subsequent `getEngine()` calls will use
- * that wallet's IndexedDB database. Resetting to a different walletId tears
- * down the previous engine so its WASM memory can be reclaimed.
+ * Bind the engine to a wallet id. For now we keep ONE engine instance for
+ * the lifetime of the SW — the unlocked SecretKey is keyed by fingerprint
+ * inside the WASM module itself, so the same engine serves multiple wallets
+ * cleanly without losing unlock state. The walletId tracking here exists so
+ * a future multi-wallet IndexedDB swap can hook in without rewiring callers.
  */
 export function setActiveWallet(walletId: string | null): void {
-  if (walletId === currentWalletId) return;
-  if (enginePromise) {
-    void enginePromise
-      .then((engine) => {
-        try {
-          engine.free();
-        } catch {
-          // already freed or wasm not initialized — ignore
-        }
-      })
-      .catch(() => {});
-  }
-  enginePromise = null;
-  currentWalletId = walletId;
+  currentWalletId = walletId ?? BOOTSTRAP_WALLET_ID;
 }
 
 export async function getEngine(): Promise<Sage> {
-  if (!currentWalletId) {
-    throw new Error("Engine requested before a wallet was unlocked");
-  }
   if (!enginePromise) {
     const walletId = currentWalletId;
     enginePromise = (async () => {

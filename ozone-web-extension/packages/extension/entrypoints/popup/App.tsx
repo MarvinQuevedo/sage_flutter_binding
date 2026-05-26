@@ -137,12 +137,6 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
         password,
         testnet: false,
       });
-      // Unlock the engine immediately so the home screen has the SK cached.
-      await callEngine("unlock_keychain", {
-        keychain_blob: importRes.keychain_blob,
-        fingerprint: importRes.fingerprint,
-        password,
-      });
       const wallet: StoredWallet = {
         fingerprint: importRes.fingerprint,
         keychainBlob: importRes.keychain_blob,
@@ -150,7 +144,15 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
         createdAt: Date.now(),
       };
       await saveWallet(wallet);
+      // setActiveWallet (inside onDone) will recreate the engine bound to the
+      // wallet's IDB; unlock_keychain AFTER that so the SK lives in the right
+      // engine instance.
       await onDone(wallet);
+      await callEngine("unlock_keychain", {
+        keychain_blob: importRes.keychain_blob,
+        fingerprint: importRes.fingerprint,
+        password,
+      });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -165,10 +167,14 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
         <p className="muted">A Chia wallet for your browser. Choose how to get started.</p>
         {error && <p className="error">{error}</p>}
         <button onClick={generate}>Create new wallet</button>
-        <button onClick={() => setMode("import")}>Import existing mnemonic</button>
+        <button className="secondary" onClick={() => setMode("import")}>
+          Import existing mnemonic
+        </button>
       </section>
     );
   }
+
+  const words = mnemonic.trim().split(/\s+/).filter(Boolean);
 
   return (
     <section className="screen">
@@ -178,13 +184,24 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
           Write these 24 words down somewhere safe. They're the only way to recover your wallet.
         </p>
       )}
-      <textarea
-        value={mnemonic}
-        onChange={(e) => setMnemonic(e.target.value)}
-        rows={4}
-        spellCheck={false}
-        readOnly={mode === "create"}
-      />
+      {mode === "create" && words.length === 24 ? (
+        <div className="seed-grid">
+          {words.map((w, i) => (
+            <span className="seed-pill" key={i}>
+              <span className="seed-pill-index">{i + 1}</span>
+              <span className="seed-pill-word">{w}</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <textarea
+          value={mnemonic}
+          onChange={(e) => setMnemonic(e.target.value)}
+          rows={4}
+          spellCheck={false}
+          placeholder="12 or 24 words, space-separated"
+        />
+      )}
       <label className="field">
         <span>Password</span>
         <input
@@ -196,7 +213,7 @@ function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Prom
       </label>
       {error && <p className="error">{error}</p>}
       <div className="row">
-        <button onClick={() => setMode("choose")} disabled={busy}>
+        <button className="secondary" onClick={() => setMode("choose")} disabled={busy}>
           Back
         </button>
         <button onClick={finish} disabled={busy || !mnemonic.trim() || !password.trim()}>
