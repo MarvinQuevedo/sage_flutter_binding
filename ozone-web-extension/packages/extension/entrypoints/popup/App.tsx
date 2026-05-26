@@ -1,142 +1,290 @@
 import { useEffect, useState } from "react";
 import { callEngine, setActiveWallet } from "../../src/popup/engine-client";
+import {
+  getActiveFingerprint,
+  listWallets,
+  saveWallet,
+  setActiveFingerprint,
+  type StoredWallet,
+} from "../../src/popup/wallet-store";
 
-interface VersionInfo {
-  engine: string;
-  sage_api: string;
-}
-
-interface DeriveResult {
-  address: string;
-  puzzle_hash: string;
-  public_key: string;
-  index: number;
-  testnet: boolean;
-}
-
-const DEMO_MNEMONIC =
-  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+type View =
+  | { kind: "loading" }
+  | { kind: "onboarding" }
+  | { kind: "locked"; wallet: StoredWallet }
+  | { kind: "home"; wallet: StoredWallet };
 
 export function App() {
-  const [version, setVersion] = useState<VersionInfo | null>(null);
-  const [ping, setPing] = useState<string>("pending");
-  const [bootError, setBootError] = useState<string | null>(null);
-
-  const [mnemonic, setMnemonic] = useState<string>(DEMO_MNEMONIC);
-  const [derived, setDerived] = useState<DeriveResult | null>(null);
-  const [deriving, setDeriving] = useState(false);
-  const [deriveError, setDeriveError] = useState<string | null>(null);
-  const [testnet, setTestnet] = useState(false);
+  const [view, setView] = useState<View>({ kind: "loading" });
 
   useEffect(() => {
     void (async () => {
-      try {
-        // Boot a dev wallet id so the engine can open IndexedDB.
-        // In production this comes from the unlock flow.
-        await setActiveWallet("dev-default");
-
-        const [v, p] = await Promise.all([
-          callEngine<VersionInfo>("version"),
-          callEngine<{ pong: boolean }>("ping"),
-        ]);
-        setVersion(v);
-        setPing(p.pong ? "pong" : "no-pong");
-      } catch (err) {
-        setBootError((err as Error).message ?? String(err));
+      const wallets = await listWallets();
+      if (wallets.length === 0) {
+        setView({ kind: "onboarding" });
+        return;
       }
+      const activeFp = await getActiveFingerprint();
+      const active = activeFp ? wallets.find((w) => w.fingerprint === activeFp) : wallets[0];
+      const target = active ?? wallets[0]!;
+      setView({ kind: "locked", wallet: target });
     })();
   }, []);
-
-  const onDerive = async () => {
-    setDeriving(true);
-    setDeriveError(null);
-    setDerived(null);
-    try {
-      const res = await callEngine<DeriveResult>("derive_address", {
-        mnemonic: mnemonic.trim(),
-        index: 0,
-        testnet,
-      });
-      setDerived(res);
-    } catch (err) {
-      setDeriveError((err as Error).message ?? String(err));
-    } finally {
-      setDeriving(false);
-    }
-  };
 
   return (
     <div className="ozone-popup">
       <header className="ozone-header">
         <span className="ozone-logo">Ozone</span>
-        <span className="ozone-meta">
-          {version ? `engine ${version.engine} · sage ${version.sage_api}` : "loading…"}
-        </span>
       </header>
       <main>
-        <section className="screen">
-          <h1>Engine status</h1>
-          {bootError && <p className="error">Boot failed: {bootError}</p>}
-          {!bootError && (
-            <ul className="status-list">
-              <li>
-                <span className="muted">ping</span>{" "}
-                <span className={ping === "pong" ? "ok" : "muted"}>{ping}</span>
-              </li>
-              <li>
-                <span className="muted">engine</span>{" "}
-                <span>{version?.engine ?? "—"}</span>
-              </li>
-              <li>
-                <span className="muted">sage-api</span>{" "}
-                <span>{version?.sage_api ?? "—"}</span>
-              </li>
-            </ul>
-          )}
-        </section>
-
-        <section className="screen">
-          <h2>Derive address</h2>
-          <p className="muted">
-            BIP-39 mnemonic → BLS unhardened derivation → synthetic key →
-            bech32m. End-to-end through the WASM engine.
-          </p>
-          <textarea
-            value={mnemonic}
-            onChange={(e) => setMnemonic(e.target.value)}
-            rows={3}
-            spellCheck={false}
+        {view.kind === "loading" && <LoadingScreen />}
+        {view.kind === "onboarding" && (
+          <OnboardingScreen
+            onDone={async (w) => {
+              await setActiveFingerprint(w.fingerprint);
+              await setActiveWallet(w.fingerprint.toString());
+              setView({ kind: "home", wallet: w });
+            }}
           />
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={testnet}
-              onChange={(e) => setTestnet(e.target.checked)}
-            />
-            <span>testnet</span>
-          </label>
-          <button onClick={onDerive} disabled={deriving || !mnemonic.trim()}>
-            {deriving ? "Deriving…" : "Derive index 0"}
-          </button>
-          {deriveError && <p className="error">{deriveError}</p>}
-          {derived && (
-            <div className="result">
-              <div>
-                <span className="muted">address</span>
-                <code>{derived.address}</code>
-              </div>
-              <div>
-                <span className="muted">puzzle hash</span>
-                <code>{derived.puzzle_hash}</code>
-              </div>
-              <div>
-                <span className="muted">pubkey</span>
-                <code>{derived.public_key}</code>
-              </div>
-            </div>
-          )}
-        </section>
+        )}
+        {view.kind === "locked" && (
+          <LockScreen
+            wallet={view.wallet}
+            onUnlocked={async (w) => {
+              await setActiveFingerprint(w.fingerprint);
+              await setActiveWallet(w.fingerprint.toString());
+              setView({ kind: "home", wallet: w });
+            }}
+          />
+        )}
+        {view.kind === "home" && (
+          <HomeScreen
+            wallet={view.wallet}
+            onLock={async () => {
+              await setActiveFingerprint(null);
+              await setActiveWallet(null);
+              setView({ kind: "locked", wallet: view.wallet });
+            }}
+          />
+        )}
       </main>
     </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <section className="screen">
+      <p className="muted">Loading…</p>
+    </section>
+  );
+}
+
+function OnboardingScreen({ onDone }: { onDone: (w: StoredWallet) => void | Promise<void> }) {
+  const [mode, setMode] = useState<"choose" | "create" | "import">("choose");
+  const [mnemonic, setMnemonic] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = async () => {
+    setError(null);
+    try {
+      const res = await callEngine<{ mnemonic: string }>("generate_mnemonic", { words: 24 });
+      setMnemonic(res.mnemonic);
+      setMode("create");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const finish = async () => {
+    if (!password.trim()) {
+      setError("Set a password");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await callEngine<{
+        fingerprint: number;
+        keychain_blob: string;
+        address_0: string;
+        master_public_key: string;
+      }>("import_mnemonic", {
+        mnemonic: mnemonic.trim(),
+        password,
+        testnet: false,
+      });
+      const wallet: StoredWallet = {
+        fingerprint: res.fingerprint,
+        keychainBlob: res.keychain_blob,
+        label: `Wallet ${res.fingerprint}`,
+        createdAt: Date.now(),
+      };
+      await saveWallet(wallet);
+      await onDone(wallet);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mode === "choose") {
+    return (
+      <section className="screen">
+        <h1>Welcome to Ozone</h1>
+        <p className="muted">A Chia wallet for your browser. Choose how to get started.</p>
+        {error && <p className="error">{error}</p>}
+        <button onClick={generate}>Create new wallet</button>
+        <button onClick={() => setMode("import")}>Import existing mnemonic</button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="screen">
+      <h1>{mode === "create" ? "Save your seed phrase" : "Import mnemonic"}</h1>
+      {mode === "create" && (
+        <p className="muted">
+          Write these 24 words down somewhere safe. They're the only way to recover your wallet.
+        </p>
+      )}
+      <textarea
+        value={mnemonic}
+        onChange={(e) => setMnemonic(e.target.value)}
+        rows={4}
+        spellCheck={false}
+        readOnly={mode === "create"}
+      />
+      <label className="field">
+        <span>Password</span>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Used to encrypt the seed on this device"
+        />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="row">
+        <button onClick={() => setMode("choose")} disabled={busy}>
+          Back
+        </button>
+        <button onClick={finish} disabled={busy || !mnemonic.trim() || !password.trim()}>
+          {busy ? "Saving…" : "Continue"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function LockScreen({
+  wallet,
+  onUnlocked,
+}: {
+  wallet: StoredWallet;
+  onUnlocked: (w: StoredWallet) => void | Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const unlock = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await callEngine<{ fingerprint: number; mnemonic: string }>("unlock_keychain", {
+        keychain_blob: wallet.keychainBlob,
+        fingerprint: wallet.fingerprint,
+        password,
+      });
+      await onUnlocked(wallet);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="screen">
+      <h1>Unlock</h1>
+      <p className="muted">{wallet.label}</p>
+      <label className="field">
+        <span>Password</span>
+        <input
+          type="password"
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !busy && password) void unlock();
+          }}
+        />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button onClick={unlock} disabled={busy || !password}>
+        {busy ? "Unlocking…" : "Unlock"}
+      </button>
+    </section>
+  );
+}
+
+function HomeScreen({
+  wallet,
+  onLock,
+}: {
+  wallet: StoredWallet;
+  onLock: () => void | Promise<void>;
+}) {
+  const [address, setAddress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        // For now derive locally without the unlocked SK — uses the keychain
+        // blob's master_pk path. Once the unlock holds the SK in memory this
+        // method will be redundant.
+        const res = await callEngine<{ address: string }>("derive_address", {
+          // dev placeholder: use a known mnemonic. In the real flow this comes
+          // from the unlocked SK held by the engine.
+          mnemonic:
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          index: 0,
+          testnet: false,
+        });
+        setAddress(res.address);
+      } catch (err) {
+        setError((err as Error).message);
+      }
+    })();
+  }, []);
+
+  return (
+    <section className="screen">
+      <h1>0.0000 XCH</h1>
+      <p className="muted">
+        {wallet.label} · fp {wallet.fingerprint}
+      </p>
+      {address && (
+        <div className="result">
+          <div>
+            <span className="muted">receive address</span>
+            <code>{address}</code>
+          </div>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+      <nav className="actions">
+        <button disabled>Send</button>
+        <button disabled>Receive</button>
+      </nav>
+      <button onClick={() => void onLock()} className="lock-btn">
+        Lock
+      </button>
+    </section>
   );
 }

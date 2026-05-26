@@ -5,8 +5,9 @@
   "description": "Ozone — Chia browser extension wallet (Goby-compatible, coinset.org sync)",
   "type": "module",
   "scripts": {
-    "wasm:build": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --release",
-    "wasm:build:dev": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --dev",
+    "wasm:build": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --release && pnpm wasm:fix-pkg-name",
+    "wasm:build:dev": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --dev && pnpm wasm:fix-pkg-name",
+    "wasm:fix-pkg-name": "node -e \"const fs=require('fs');const p='packages/wallet-wasm/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.name='@ozone/wallet-wasm';j.private=true;fs.writeFileSync(p, JSON.stringify(j,null,2)+'\\n');\"",
     "dev": "pnpm --filter @ozone/extension dev",
     "build": "pnpm wasm:build && pnpm --filter @ozone/extension build",
     "zip": "pnpm --filter @ozone/extension zip",

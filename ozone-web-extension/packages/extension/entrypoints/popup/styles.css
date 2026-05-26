@@ -96,6 +96,34 @@ textarea {
   border-radius: 4px;
 }
 
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.field input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, canvastext 20%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, canvas 90%, canvastext 3%);
+  color: canvastext;
+  font-size: 14px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.lock-btn {
+  margin-top: 16px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, canvastext 15%, transparent);
+}
+
 .ozone-popup {
   display: flex;
   flex-direction: column;
