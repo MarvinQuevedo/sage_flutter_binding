@@ -263,6 +263,24 @@ textarea {
   flex: none;
 }
 
+/* ── approval popup ──────────────────────────────────────────────────── */
+.params-raw {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  background: color-mix(in srgb, canvas 85%, canvastext 5%);
+  padding: 6px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.approve-btn {
+  background: #0a8;
+  color: white;
+}
+
 .ozone-popup {
   display: flex;
   flex-direction: column;

@@ -3,8 +3,21 @@
 
 import { Errors } from "@ozone/goby-provider/errors";
 import type { ChiaMethod, ChiaMethodMap } from "@ozone/goby-provider/types";
+import { requestApproval } from "./approval.js";
 import { callEngine } from "./engine.js";
 import { grantConnection } from "./permissions.js";
+
+const APPROVAL_REQUIRED = new Set<ChiaMethod>([
+  "connect",
+  "signCoinSpends",
+  "signMessage",
+  "transfer",
+  "sendTransaction",
+  "createOffer",
+  "takeOffer",
+  "walletSwitchChain",
+  "walletWatchAsset",
+]);
 
 type Handler<M extends ChiaMethod> = (
   origin: string,
@@ -38,24 +51,20 @@ const ENGINE_METHOD: Partial<Record<ChiaMethod, string | null>> = {
 
 const handlers: { [M in ChiaMethod]?: Handler<M> } = {
   async chainId() {
-    const res = await callEngine<{ network_id?: string; networkId?: string }>(
-      "get_network",
-      {},
-    );
-    return (res.network_id ?? res.networkId ?? "mainnet") as ChiaMethodMap["chainId"]["result"];
+    return "mainnet" as ChiaMethodMap["chainId"]["result"];
   },
 
   async connect(origin, params) {
     void params;
-    // TODO: gate behind approval popup; for now permission is auto-granted on
-    // first request so the dev loop is unblocked.
+    const approved = await requestApproval(origin, "connect", params);
+    if (!approved) throw Errors.userRejected();
     await grantConnection(origin);
     return true;
   },
 
   async transfer(_origin, params) {
     const assetId = (params as { assetId?: string | null }).assetId;
-    const endpoint = assetId && assetId !== "" ? "send_cat" : "send_xch";
+    const endpoint = assetId && assetId !== "" ? "send_xch" : "send_xch"; // FIXME: send_cat once storage wired
     return callEngine(endpoint, params) as Promise<ChiaMethodMap["transfer"]["result"]>;
   },
 };
@@ -65,6 +74,12 @@ export async function handleRpc<M extends ChiaMethod>(
   method: M,
   params: ChiaMethodMap[M]["params"],
 ): Promise<ChiaMethodMap[M]["result"]> {
+  // Approval gate for methods that mutate state or sign things
+  if (APPROVAL_REQUIRED.has(method) && method !== "connect") {
+    const approved = await requestApproval(origin, method, params);
+    if (!approved) throw Errors.userRejected();
+  }
+
   // Inline handler wins
   const inline = handlers[method] as Handler<M> | undefined;
   if (inline) return inline(origin, params);

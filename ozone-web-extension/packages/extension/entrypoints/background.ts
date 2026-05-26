@@ -7,6 +7,7 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { Errors } from "@ozone/goby-provider/errors";
 import type { ChiaMethod } from "@ozone/goby-provider/types";
+import { handleApprovalMessage, isApprovalMessage } from "../src/background/approval";
 import { setActiveWallet } from "../src/background/engine";
 import { handlePopupMessage, isPopupMessage } from "../src/background/popup-rpc";
 import { handleRpc } from "../src/background/rpc-router";
@@ -41,6 +42,12 @@ export default defineBackground(() => {
   });
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    // ── Approval popup → SW ────────────────────────────────────────────
+    if (isApprovalMessage(msg)) {
+      void handleApprovalMessage(msg).then(sendResponse);
+      return true;
+    }
+
     // ── Popup → SW ─────────────────────────────────────────────────────
     if (isPopupMessage(msg)) {
       void handlePopupMessage(msg).then(sendResponse);
