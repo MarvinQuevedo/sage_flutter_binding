@@ -5,10 +5,10 @@
   "description": "Ozone — Chia browser extension wallet (Goby-compatible, coinset.org sync)",
   "type": "module",
   "scripts": {
-    "wasm:build": "cd ../vendor/sage && wasm-pack build crates/sage-wasm --target web --out-dir ../../ozone-web-extension/packages/wallet-wasm --features coinset-sync,wasm",
-    "wasm:opt": "wasm-opt -Oz -o packages/wallet-wasm/sage_wasm_bg.wasm packages/wallet-wasm/sage_wasm_bg.wasm",
+    "wasm:build": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --release",
+    "wasm:build:dev": "cd .. && CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar wasm-pack build vendor/sage/crates/sage-wasm --target web --out-dir ../../../../ozone-web-extension/packages/wallet-wasm --dev",
     "dev": "pnpm --filter @ozone/extension dev",
-    "build": "pnpm wasm:build && pnpm wasm:opt && pnpm --filter @ozone/extension build",
+    "build": "pnpm wasm:build && pnpm --filter @ozone/extension build",
     "zip": "pnpm --filter @ozone/extension zip",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint"

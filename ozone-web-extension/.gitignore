@@ -7,7 +7,9 @@ dist/
 
 # WASM build outputs (regenerated via pnpm wasm:build)
 packages/wallet-wasm/*.wasm
-packages/wallet-wasm/*.js
-packages/wallet-wasm/*.d.ts
+packages/wallet-wasm/sage_wasm.js
+packages/wallet-wasm/sage_wasm.d.ts
+packages/wallet-wasm/sage_wasm_bg.wasm.d.ts
+packages/wallet-wasm/.gitignore
 !packages/wallet-wasm/package.json
 !packages/wallet-wasm/README.md
