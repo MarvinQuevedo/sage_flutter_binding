@@ -199,6 +199,45 @@ export async function tickCoinSync(): Promise<void> {
       }
     }
 
+    // 6. Discover CATs by hint matching against our inner puzzle hashes.
+    //    This is best-effort — we don't fail the whole tick on a CAT error.
+    if (Date.now() < deadline) {
+      try {
+        const catRes = await callEngine<{
+          cats: Array<{
+            asset_id: string;
+            total_unspent_mojos: string;
+            unspent_coin_count: number;
+            coins: Array<{
+              coin_id: string;
+              parent_coin_info: string;
+              puzzle_hash: string;
+              amount: string;
+              inner_puzzle_hash: string;
+              hint: string;
+              confirmed_block_index: number;
+              spent: boolean;
+              spent_block_index: number;
+            }>;
+          }>;
+        }>("scan_cats", {
+          master_public_key: masterPk,
+          start: 0,
+          count: DERIVE_COUNT,
+          testnet: false,
+          endpoint: "mainnet",
+        });
+        const catsMap: Record<string, (typeof catRes)["cats"][number]> = {};
+        for (const c of catRes.cats) {
+          catsMap[c.asset_id] = c;
+        }
+        store.cats = catsMap;
+        store.cats_synced_at = Date.now();
+      } catch (err) {
+        console.warn("[Ozone] CAT scan failed:", (err as Error).message);
+      }
+    }
+
     await writeCoinStore(wallet.fingerprint, store);
     await writeTelemetry({
       fingerprint: wallet.fingerprint,

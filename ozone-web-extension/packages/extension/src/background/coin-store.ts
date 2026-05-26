@@ -26,16 +26,39 @@ export interface CoinRecord {
   hint?: string;
 }
 
+export interface CatCoin {
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  inner_puzzle_hash: string;
+  hint: string;
+  confirmed_block_index: number;
+  spent: boolean;
+  spent_block_index: number;
+}
+
+export interface CatAsset {
+  asset_id: string;
+  total_unspent_mojos: string;
+  unspent_coin_count: number;
+  coins: CatCoin[];
+}
+
 export interface CoinStore {
   last_synced_height: number;
   ph_heights: Record<string, number>;
   coins: Record<string, CoinRecord>;
+  /** CATs grouped by asset_id, refreshed by the scan_cats path. */
+  cats?: Record<string, CatAsset>;
+  cats_synced_at?: number;
 }
 
 const empty = (): CoinStore => ({
   last_synced_height: 0,
   ph_heights: {},
   coins: {},
+  cats: {},
 });
 
 export async function readCoinStore(fingerprint: number): Promise<CoinStore> {

@@ -61,6 +61,8 @@ export async function handlePopupMessage(
             unspent_mojos: totalUnspentMojos(store),
             unspent_count: unspentCoinCount(store),
             coins: store.coins,
+            cats: store.cats ?? {},
+            cats_synced_at: store.cats_synced_at ?? null,
           },
         };
       }

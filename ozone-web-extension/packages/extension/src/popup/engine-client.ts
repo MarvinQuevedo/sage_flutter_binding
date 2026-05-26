@@ -49,6 +49,25 @@ export async function getSyncState(): Promise<SyncState | null> {
   return (res.value as SyncState | null) ?? null;
 }
 
+export interface CatCoin {
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  inner_puzzle_hash: string;
+  hint: string;
+  confirmed_block_index: number;
+  spent: boolean;
+  spent_block_index: number;
+}
+
+export interface CatAsset {
+  asset_id: string;
+  total_unspent_mojos: string;
+  unspent_coin_count: number;
+  coins: CatCoin[];
+}
+
 export interface CoinSnapshot {
   last_synced_height: number;
   unspent_mojos: string;
@@ -64,6 +83,8 @@ export interface CoinSnapshot {
     timestamp: number;
     hint?: string;
   }>;
+  cats?: Record<string, CatAsset>;
+  cats_synced_at?: number | null;
 }
 
 export async function getCoinSnapshot(fingerprint: number): Promise<CoinSnapshot> {

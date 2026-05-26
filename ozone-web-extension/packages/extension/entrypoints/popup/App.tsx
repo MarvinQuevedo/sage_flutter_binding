@@ -450,7 +450,12 @@ function HomeScreen({
       </nav>
 
       {tab === "home" && (
-        <HomeTab balance={balance} balanceError={balanceError} onRefresh={() => void refreshBalance()} />
+        <HomeTab
+          balance={balance}
+          balanceError={balanceError}
+          onRefresh={() => void refreshBalance()}
+          wallet={wallet}
+        />
       )}
       {tab === "send" && <SendTab wallet={wallet} balance={balance} />}
       {tab === "receive" && <ReceiveTab wallet={wallet} />}
@@ -627,12 +632,36 @@ function HomeTab({
   balance,
   balanceError,
   onRefresh,
+  wallet,
 }: {
   balance: BalanceInfo | null;
   balanceError: string | null;
   onRefresh: () => void;
+  wallet: StoredWallet;
 }) {
+  const [snapshot, setSnapshot] = useState<CoinSnapshot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const s = await getCoinSnapshot(wallet.fingerprint);
+        if (!cancelled) setSnapshot(s);
+      } catch {
+        // best-effort
+      }
+    };
+    void refresh();
+    const id = setInterval(refresh, 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [wallet.fingerprint]);
+
   const fundedAddresses = balance?.addresses.filter((a) => a.unspent_count > 0) ?? [];
+  const cats = snapshot?.cats ? Object.values(snapshot.cats) : [];
+  const catsWithBalance = cats.filter((c) => c.unspent_coin_count > 0);
 
   return (
     <div className="tab-body">
@@ -647,7 +676,7 @@ function HomeTab({
         </li>
         <li>
           <span className="muted">CATs</span>
-          <span className="muted">—</span>
+          <span>{catsWithBalance.length || "—"}</span>
         </li>
         <li>
           <span className="muted">NFTs</span>
@@ -655,9 +684,31 @@ function HomeTab({
         </li>
       </ul>
 
+      {catsWithBalance.length > 0 && (
+        <>
+          <h3>CATs</h3>
+          <ul className="address-list">
+            {catsWithBalance.map((c) => (
+              <li key={c.asset_id} title={c.asset_id}>
+                <span className="address-index">CAT</span>
+                <div className="address-block">
+                  <code>{shortHash(c.asset_id)}</code>
+                  <span className="muted small">
+                    {c.unspent_coin_count} coin{c.unspent_coin_count === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <span className="small ok">
+                  {mojosToCatUnits(c.total_unspent_mojos)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       {fundedAddresses.length > 0 && (
         <>
-          <h3>Holdings</h3>
+          <h3>XCH Holdings</h3>
           <ul className="address-list">
             {fundedAddresses.map((a) => (
               <li key={a.index}>
@@ -677,10 +728,34 @@ function HomeTab({
         Refresh balance
       </button>
       <p className="muted small">
-        Balances are read live from coinset.org across your first 50 derived addresses.
+        Balances are read live from coinset.org. CATs discovered by hint matching.
       </p>
     </div>
   );
+}
+
+function shortHash(hex: string): string {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (clean.length <= 12) return hex;
+  return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
+}
+
+/**
+ * CATs use 3 decimal places by convention (1 CAT = 1000 mojos). Render
+ * with up to 3 decimals + trim trailing zeros.
+ */
+function mojosToCatUnits(mojos: string): string {
+  try {
+    const m = BigInt(mojos);
+    const scale = 1_000n;
+    const whole = m / scale;
+    const frac = m % scale;
+    if (frac === 0n) return whole.toString();
+    const fracStr = frac.toString().padStart(3, "0").replace(/0+$/, "");
+    return `${whole}.${fracStr}`;
+  } catch {
+    return mojos;
+  }
 }
 
 function timeAgo(ts: number): string {
