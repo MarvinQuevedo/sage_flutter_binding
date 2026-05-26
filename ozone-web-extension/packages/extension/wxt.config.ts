@@ -14,6 +14,8 @@ export default defineConfig({
       "https://api.coinset.org/*",
       "https://kraken.fireacademy.io/*",
       "https://api.dexie.space/*",
+      "https://icons.dexie.space/*",
+      "https://api.coingecko.com/*",
       "https://*.mintgarden.io/*",
       "https://ipfs.io/*",
       "https://*.ipfs.dweb.link/*",

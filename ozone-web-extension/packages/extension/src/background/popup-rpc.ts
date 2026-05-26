@@ -9,7 +9,7 @@ import { callEngine } from "./engine.js";
 import { setActiveWallet } from "./engine.js";
 import { clearCoinStore, readCoinStore, totalUnspentMojos, unspentCoinCount } from "./coin-store.js";
 import { readSyncTelemetry, tickCoinSync } from "./coin-sync.js";
-import { resolveCatMetadata } from "./dexie.js";
+import { getXchPriceUsd, resolveCatMetadata } from "./dexie.js";
 import { readSyncState } from "./sync-loop.js";
 
 export type PopupRpcMessage =
@@ -19,7 +19,8 @@ export type PopupRpcMessage =
   | { from: "popup"; kind: "get-coin-store"; fingerprint: number }
   | { from: "popup"; kind: "clear-coin-store"; fingerprint: number }
   | { from: "popup"; kind: "force-coin-sync" }
-  | { from: "popup"; kind: "get-coin-sync-telemetry" };
+  | { from: "popup"; kind: "get-coin-sync-telemetry" }
+  | { from: "popup"; kind: "get-xch-price" };
 
 export type PopupRpcResponse =
   | { ok: true; value: unknown }
@@ -83,6 +84,10 @@ export async function handlePopupMessage(
       case "get-coin-sync-telemetry": {
         const t = await readSyncTelemetry();
         return { ok: true, value: t };
+      }
+      case "get-xch-price": {
+        const usd = await getXchPriceUsd();
+        return { ok: true, value: usd };
       }
     }
   } catch (err) {

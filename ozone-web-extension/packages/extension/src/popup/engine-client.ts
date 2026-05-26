@@ -163,6 +163,13 @@ export async function getCoinSyncTelemetry(): Promise<CoinSyncTelemetry | null> 
   return (res.value as CoinSyncTelemetry | null) ?? null;
 }
 
+export async function getXchPriceUsd(): Promise<number | null> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "get-xch-price" };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) return null;
+  return (res.value as number | null) ?? null;
+}
+
 export interface SendXchResult {
   tx_id: string;
   status: string;

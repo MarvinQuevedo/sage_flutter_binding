@@ -5,6 +5,7 @@ import {
   getCoinSnapshot,
   getCoinSyncTelemetry,
   getSyncState,
+  getXchPriceUsd,
   pickCoinsForSendMulti,
   setActiveWallet,
   type CoinSnapshot,
@@ -329,12 +330,13 @@ function HomeScreen({
   wallet: StoredWallet;
   onLock: () => void | Promise<void>;
 }) {
-  const [tab, setTab] = useState<"home" | "send" | "receive" | "nfts" | "dev" | "settings">("home");
+  const [tab, setTab] = useState<"home" | "send" | "receive" | "nfts" | "activity" | "dev" | "settings">("home");
   const [sync, setSync] = useState<SyncState | null>(null);
   const [coinTelemetry, setCoinTelemetry] = useState<CoinSyncTelemetry | null>(null);
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [xchPrice, setXchPrice] = useState<number | null>(null);
 
   const refreshSync = async () => {
     try {
@@ -367,6 +369,7 @@ function HomeScreen({
   useEffect(() => {
     void refreshSync();
     void refreshBalance();
+    void getXchPriceUsd().then(setXchPrice).catch(() => {});
     // Kick off a coin sync immediately on popup open so the user sees fresh
     // data without waiting for the next chrome.alarm tick (~30 s).
     void forceCoinSync().catch(() => {});
@@ -376,9 +379,13 @@ function HomeScreen({
     const balanceTimer = setInterval(() => {
       void refreshBalance();
     }, 30_000);
+    const priceTimer = setInterval(() => {
+      void getXchPriceUsd().then(setXchPrice).catch(() => {});
+    }, 60_000);
     return () => {
       clearInterval(id);
       clearInterval(balanceTimer);
+      clearInterval(priceTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet.fingerprint]);
@@ -390,12 +397,16 @@ function HomeScreen({
           <h1 className="balance">
             {balance ? `${balance.total_unspent_xch} XCH` : balanceLoading ? "…" : "0.0000 XCH"}
           </h1>
-          <p className="muted">
-            {wallet.label} · fp {wallet.fingerprint}
-            {balance && balance.unspent_coin_count > 0 && (
-              <> · {balance.unspent_coin_count} coins</>
+          <div className="wallet-bar-subline">
+            {xchPrice && balance && (
+              <span className="usd-total">
+                ≈ ${formatUsd(parseFloat(balance.total_unspent_xch || "0") * xchPrice)}
+              </span>
             )}
-          </p>
+            <span className="muted">
+              {wallet.label} · fp {wallet.fingerprint}
+            </span>
+          </div>
         </div>
         <div className="sync-badge">
           {sync && !sync.error ? (
@@ -450,6 +461,12 @@ function HomeScreen({
           NFTs
         </button>
         <button
+          className={tab === "activity" ? "tab active" : "tab"}
+          onClick={() => setTab("activity")}
+        >
+          Activity
+        </button>
+        <button
           className={tab === "settings" ? "tab active" : "tab"}
           onClick={() => setTab("settings")}
         >
@@ -463,11 +480,13 @@ function HomeScreen({
           balanceError={balanceError}
           onRefresh={() => void refreshBalance()}
           wallet={wallet}
+          xchPrice={xchPrice}
         />
       )}
       {tab === "send" && <SendTab wallet={wallet} balance={balance} />}
       {tab === "receive" && <ReceiveTab wallet={wallet} />}
       {tab === "nfts" && <NftsTab wallet={wallet} />}
+      {tab === "activity" && <ActivityTab wallet={wallet} xchPrice={xchPrice} />}
       {tab === "dev" && <DevTab wallet={wallet} />}
       {tab === "settings" && <SettingsTab wallet={wallet} sync={sync} onLock={onLock} />}
 
@@ -637,16 +656,25 @@ function SettingsTab({
   );
 }
 
+function formatUsd(n: number): string {
+  if (!isFinite(n)) return "0.00";
+  if (n >= 1) return n.toFixed(2);
+  if (n >= 0.01) return n.toFixed(4);
+  return n.toFixed(6);
+}
+
 function HomeTab({
   balance,
   balanceError,
   onRefresh,
   wallet,
+  xchPrice,
 }: {
   balance: BalanceInfo | null;
   balanceError: string | null;
   onRefresh: () => void;
   wallet: StoredWallet;
+  xchPrice: number | null;
 }) {
   const [snapshot, setSnapshot] = useState<CoinSnapshot | null>(null);
 
@@ -670,8 +698,12 @@ function HomeTab({
 
   const cats = snapshot?.cats ? Object.values(snapshot.cats) : [];
   const catsWithBalance = cats.filter((c) => c.unspent_coin_count > 0);
-  const nftCount = snapshot?.nfts ? Object.keys(snapshot.nfts).length : 0;
+  const nftCount = snapshot?.nfts
+    ? Object.values(snapshot.nfts).filter((n) => !n.spent).length
+    : 0;
   const metadata = snapshot?.cat_metadata ?? {};
+  const xchAmount = balance ? parseFloat(balance.total_unspent_xch || "0") : 0;
+  const xchUsdValue = xchPrice ? xchAmount * xchPrice : null;
 
   return (
     <div className="tab-body">
@@ -681,11 +713,16 @@ function HomeTab({
           <div className="asset-icon asset-icon-xch">XCH</div>
           <div className="asset-meta">
             <div className="asset-name">Chia</div>
-            <div className="muted small">{balance?.unspent_coin_count ?? 0} coins</div>
+            <div className="muted small">
+              {balance?.unspent_coin_count ?? 0} coins
+              {xchPrice ? ` · $${xchPrice.toFixed(4)}/XCH` : ""}
+            </div>
           </div>
           <div className="asset-balance">
             <div>{balance?.total_unspent_xch ?? "—"}</div>
-            <div className="muted small">XCH</div>
+            <div className="muted small">
+              {xchUsdValue != null ? `≈ $${formatUsd(xchUsdValue)}` : "XCH"}
+            </div>
           </div>
         </li>
 
@@ -876,6 +913,167 @@ function NftDetail({ nft, onBack }: { nft: NftView; onBack: () => void }) {
       </details>
     </div>
   );
+}
+
+interface ActivityRow {
+  kind: "in" | "out";
+  height: number;
+  timestamp?: number;
+  amount_mojos: string;
+  coin_id: string;
+  asset_kind: "xch" | "cat";
+  asset_id?: string;
+}
+
+function ActivityTab({
+  wallet,
+  xchPrice,
+}: {
+  wallet: StoredWallet;
+  xchPrice: number | null;
+}) {
+  const [snapshot, setSnapshot] = useState<CoinSnapshot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const s = await getCoinSnapshot(wallet.fingerprint);
+        if (!cancelled) setSnapshot(s);
+      } catch {
+        // best-effort
+      }
+    };
+    void refresh();
+    const id = setInterval(refresh, 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [wallet.fingerprint]);
+
+  const rows: ActivityRow[] = [];
+  if (snapshot) {
+    // XCH coin appearances + spends
+    for (const c of Object.values(snapshot.coins)) {
+      if (c.confirmed_block_index > 0) {
+        rows.push({
+          kind: "in",
+          height: c.confirmed_block_index,
+          timestamp: c.timestamp || undefined,
+          amount_mojos: c.amount,
+          coin_id: c.coin_id,
+          asset_kind: "xch",
+        });
+      }
+      if (c.spent && c.spent_block_index > 0) {
+        rows.push({
+          kind: "out",
+          height: c.spent_block_index,
+          amount_mojos: c.amount,
+          coin_id: c.coin_id,
+          asset_kind: "xch",
+        });
+      }
+    }
+    // CAT receipts + spends
+    for (const cat of Object.values(snapshot.cats ?? {})) {
+      for (const c of cat.coins) {
+        if (c.confirmed_block_index > 0) {
+          rows.push({
+            kind: "in",
+            height: c.confirmed_block_index,
+            amount_mojos: c.amount,
+            coin_id: c.coin_id,
+            asset_kind: "cat",
+            asset_id: cat.asset_id,
+          });
+        }
+        if (c.spent && c.spent_block_index > 0) {
+          rows.push({
+            kind: "out",
+            height: c.spent_block_index,
+            amount_mojos: c.amount,
+            coin_id: c.coin_id,
+            asset_kind: "cat",
+            asset_id: cat.asset_id,
+          });
+        }
+      }
+    }
+  }
+  rows.sort((a, b) => b.height - a.height);
+  const metadata = snapshot?.cat_metadata ?? {};
+
+  return (
+    <div className="tab-body">
+      {rows.length === 0 ? (
+        <p className="muted">
+          No activity yet. Incoming and outgoing transactions appear here as
+          they confirm on chain.
+        </p>
+      ) : (
+        <ul className="activity-list">
+          {rows.slice(0, 200).map((r, i) => {
+            const isIn = r.kind === "in";
+            const meta =
+              r.asset_id != null
+                ? metadata[r.asset_id] ?? metadata[normalizeId(r.asset_id)]
+                : null;
+            const ticker = r.asset_kind === "xch" ? "XCH" : meta?.code ?? "CAT";
+            const decimals = r.asset_kind === "xch" ? 12 : meta?.decimals ?? 3;
+            const amt = formatAmount(r.amount_mojos, decimals);
+            const usd =
+              r.asset_kind === "xch" && xchPrice
+                ? parseFloat(amt) * xchPrice
+                : null;
+            return (
+              <li key={`${r.coin_id}-${r.kind}-${i}`} className="activity-row">
+                <div className={isIn ? "activity-arrow ok" : "activity-arrow warn"}>
+                  {isIn ? "↓" : "↑"}
+                </div>
+                <div className="activity-meta">
+                  <div className="activity-title">
+                    {isIn ? "Received" : "Sent"} {ticker}
+                  </div>
+                  <div className="muted small">block #{r.height.toLocaleString()}</div>
+                </div>
+                <div className="activity-amount">
+                  <div className={isIn ? "ok" : "warn"}>
+                    {isIn ? "+" : "−"}
+                    {amt}
+                  </div>
+                  {usd != null && (
+                    <div className="muted small">≈ ${formatUsd(usd)}</div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {rows.length > 200 && (
+        <p className="muted small">Showing the most recent 200 events.</p>
+      )}
+    </div>
+  );
+}
+
+function formatAmount(mojos: string, decimals: number): string {
+  try {
+    const m = BigInt(mojos);
+    const scale = 10n ** BigInt(decimals);
+    const whole = m / scale;
+    const frac = m % scale;
+    if (frac === 0n) return whole.toString();
+    const fracStr = frac
+      .toString()
+      .padStart(decimals, "0")
+      .replace(/0+$/, "");
+    return `${whole}.${fracStr}`;
+  } catch {
+    return mojos;
+  }
 }
 
 function normalizeId(id: string): string {
