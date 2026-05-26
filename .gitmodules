@@ -1,4 +1,8 @@
 [submodule "vendor/sage"]
 	path = vendor/sage
 	url = https://github.com/MarvinQuevedo/sage.git
-	branch = flutter-binding/v0.12.10
+	branch = web/coinset-sync
+[submodule "vendor/chia-wallet-sdk"]
+	path = vendor/chia-wallet-sdk
+	url = https://github.com/MarvinQuevedo/chia-wallet-sdk.git
+	branch = feat/peer-client-feature
