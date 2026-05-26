@@ -68,6 +68,44 @@ export interface CatAsset {
   coins: CatCoin[];
 }
 
+export interface DexieCatMetadata {
+  asset_id: string;
+  code?: string;
+  name?: string;
+  image_url?: string;
+  decimals?: number;
+  fetched_at: number;
+}
+
+export interface NftMetadataView {
+  edition_number?: number;
+  edition_total?: number;
+  data_uris?: string[];
+  data_hash?: string;
+  metadata_uris?: string[];
+  metadata_hash?: string;
+  license_uris?: string[];
+  license_hash?: string;
+}
+
+export interface NftView {
+  launcher_id: string;
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  metadata: NftMetadataView;
+  metadata_updater_puzzle_hash: string;
+  current_owner_did: string | null;
+  royalty_puzzle_hash: string;
+  royalty_basis_points: number;
+  p2_puzzle_hash: string;
+  hint: string;
+  confirmed_block_index: number;
+  spent: boolean;
+  spent_block_index: number;
+}
+
 export interface CoinSnapshot {
   last_synced_height: number;
   unspent_mojos: string;
@@ -85,6 +123,9 @@ export interface CoinSnapshot {
   }>;
   cats?: Record<string, CatAsset>;
   cats_synced_at?: number | null;
+  cat_metadata?: Record<string, DexieCatMetadata>;
+  nfts?: Record<string, NftView>;
+  nfts_synced_at?: number | null;
 }
 
 export async function getCoinSnapshot(fingerprint: number): Promise<CoinSnapshot> {

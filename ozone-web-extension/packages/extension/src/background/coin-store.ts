@@ -45,6 +45,35 @@ export interface CatAsset {
   coins: CatCoin[];
 }
 
+export interface NftMetadataView {
+  edition_number?: number;
+  edition_total?: number;
+  data_uris?: string[];
+  data_hash?: string;
+  metadata_uris?: string[];
+  metadata_hash?: string;
+  license_uris?: string[];
+  license_hash?: string;
+}
+
+export interface NftView {
+  launcher_id: string;
+  coin_id: string;
+  parent_coin_info: string;
+  puzzle_hash: string;
+  amount: string;
+  metadata: NftMetadataView;
+  metadata_updater_puzzle_hash: string;
+  current_owner_did: string | null;
+  royalty_puzzle_hash: string;
+  royalty_basis_points: number;
+  p2_puzzle_hash: string;
+  hint: string;
+  confirmed_block_index: number;
+  spent: boolean;
+  spent_block_index: number;
+}
+
 export interface CoinStore {
   last_synced_height: number;
   ph_heights: Record<string, number>;
@@ -52,6 +81,9 @@ export interface CoinStore {
   /** CATs grouped by asset_id, refreshed by the scan_cats path. */
   cats?: Record<string, CatAsset>;
   cats_synced_at?: number;
+  /** NFTs keyed by launcher_id, refreshed by the scan_nfts path. */
+  nfts?: Record<string, NftView>;
+  nfts_synced_at?: number;
 }
 
 const empty = (): CoinStore => ({
@@ -59,6 +91,7 @@ const empty = (): CoinStore => ({
   ph_heights: {},
   coins: {},
   cats: {},
+  nfts: {},
 });
 
 export async function readCoinStore(fingerprint: number): Promise<CoinStore> {

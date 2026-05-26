@@ -9,6 +9,7 @@ import { callEngine } from "./engine.js";
 import { setActiveWallet } from "./engine.js";
 import { clearCoinStore, readCoinStore, totalUnspentMojos, unspentCoinCount } from "./coin-store.js";
 import { readSyncTelemetry, tickCoinSync } from "./coin-sync.js";
+import { resolveCatMetadata } from "./dexie.js";
 import { readSyncState } from "./sync-loop.js";
 
 export type PopupRpcMessage =
@@ -54,6 +55,8 @@ export async function handlePopupMessage(
       }
       case "get-coin-store": {
         const store = await readCoinStore(msg.fingerprint);
+        const assetIds = Object.keys(store.cats ?? {});
+        const metadata = await resolveCatMetadata(assetIds).catch(() => ({}));
         return {
           ok: true,
           value: {
@@ -63,6 +66,9 @@ export async function handlePopupMessage(
             coins: store.coins,
             cats: store.cats ?? {},
             cats_synced_at: store.cats_synced_at ?? null,
+            cat_metadata: metadata,
+            nfts: store.nfts ?? {},
+            nfts_synced_at: store.nfts_synced_at ?? null,
           },
         };
       }

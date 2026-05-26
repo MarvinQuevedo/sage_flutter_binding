@@ -13,6 +13,10 @@ export default defineConfig({
     host_permissions: [
       "https://api.coinset.org/*",
       "https://kraken.fireacademy.io/*",
+      "https://api.dexie.space/*",
+      "https://*.mintgarden.io/*",
+      "https://ipfs.io/*",
+      "https://*.ipfs.dweb.link/*",
     ],
     action: {
       default_title: "Ozone",

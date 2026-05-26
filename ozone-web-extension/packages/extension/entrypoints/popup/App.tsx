@@ -9,6 +9,8 @@ import {
   setActiveWallet,
   type CoinSnapshot,
   type CoinSyncTelemetry,
+  type DexieCatMetadata,
+  type NftView,
   type SendXchResult,
   type SyncState,
 } from "../../src/popup/engine-client";
@@ -327,7 +329,7 @@ function HomeScreen({
   wallet: StoredWallet;
   onLock: () => void | Promise<void>;
 }) {
-  const [tab, setTab] = useState<"home" | "send" | "receive" | "dev" | "settings">("home");
+  const [tab, setTab] = useState<"home" | "send" | "receive" | "nfts" | "dev" | "settings">("home");
   const [sync, setSync] = useState<SyncState | null>(null);
   const [coinTelemetry, setCoinTelemetry] = useState<CoinSyncTelemetry | null>(null);
   const [balance, setBalance] = useState<BalanceInfo | null>(null);
@@ -442,10 +444,16 @@ function HomeScreen({
           Receive
         </button>
         <button
+          className={tab === "nfts" ? "tab active" : "tab"}
+          onClick={() => setTab("nfts")}
+        >
+          NFTs
+        </button>
+        <button
           className={tab === "settings" ? "tab active" : "tab"}
           onClick={() => setTab("settings")}
         >
-          Settings
+          ⚙
         </button>
       </nav>
 
@@ -459,6 +467,7 @@ function HomeScreen({
       )}
       {tab === "send" && <SendTab wallet={wallet} balance={balance} />}
       {tab === "receive" && <ReceiveTab wallet={wallet} />}
+      {tab === "nfts" && <NftsTab wallet={wallet} />}
       {tab === "dev" && <DevTab wallet={wallet} />}
       {tab === "settings" && <SettingsTab wallet={wallet} sync={sync} onLock={onLock} />}
 
@@ -659,79 +668,249 @@ function HomeTab({
     };
   }, [wallet.fingerprint]);
 
-  const fundedAddresses = balance?.addresses.filter((a) => a.unspent_count > 0) ?? [];
   const cats = snapshot?.cats ? Object.values(snapshot.cats) : [];
   const catsWithBalance = cats.filter((c) => c.unspent_coin_count > 0);
+  const nftCount = snapshot?.nfts ? Object.keys(snapshot.nfts).length : 0;
+  const metadata = snapshot?.cat_metadata ?? {};
 
   return (
     <div className="tab-body">
-      <ul className="status-list">
-        <li>
-          <span className="muted">XCH</span>
-          <span>{balance ? balance.total_unspent_xch : "—"}</span>
+      <ul className="asset-list">
+        {/* XCH always first */}
+        <li className="asset-row">
+          <div className="asset-icon asset-icon-xch">XCH</div>
+          <div className="asset-meta">
+            <div className="asset-name">Chia</div>
+            <div className="muted small">{balance?.unspent_coin_count ?? 0} coins</div>
+          </div>
+          <div className="asset-balance">
+            <div>{balance?.total_unspent_xch ?? "—"}</div>
+            <div className="muted small">XCH</div>
+          </div>
         </li>
-        <li>
-          <span className="muted">Coins</span>
-          <span>{balance ? balance.unspent_coin_count : "—"}</span>
-        </li>
-        <li>
-          <span className="muted">CATs</span>
-          <span>{catsWithBalance.length || "—"}</span>
-        </li>
-        <li>
-          <span className="muted">NFTs</span>
-          <span className="muted">—</span>
-        </li>
+
+        {/* CATs sorted by amount desc */}
+        {catsWithBalance
+          .slice()
+          .sort((a, b) =>
+            BigInt(b.total_unspent_mojos) > BigInt(a.total_unspent_mojos) ? 1 : -1,
+          )
+          .map((c) => {
+            const meta = metadata[c.asset_id] ?? metadata[normalizeId(c.asset_id)];
+            const ticker = meta?.code ?? "CAT";
+            const name = meta?.name ?? shortHash(c.asset_id);
+            const decimals = meta?.decimals ?? 3;
+            return (
+              <li key={c.asset_id} className="asset-row" title={c.asset_id}>
+                {meta?.image_url ? (
+                  <img
+                    src={meta.image_url}
+                    alt={name}
+                    className="asset-icon asset-icon-img"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="asset-icon asset-icon-cat">
+                    {ticker.slice(0, 3).toUpperCase()}
+                  </div>
+                )}
+                <div className="asset-meta">
+                  <div className="asset-name">{name}</div>
+                  <div className="muted small">
+                    {c.unspent_coin_count} coin{c.unspent_coin_count === 1 ? "" : "s"}
+                  </div>
+                </div>
+                <div className="asset-balance">
+                  <div>{formatCatAmount(c.total_unspent_mojos, decimals)}</div>
+                  <div className="muted small">{ticker}</div>
+                </div>
+              </li>
+            );
+          })}
       </ul>
 
-      {catsWithBalance.length > 0 && (
-        <>
-          <h3>CATs</h3>
-          <ul className="address-list">
-            {catsWithBalance.map((c) => (
-              <li key={c.asset_id} title={c.asset_id}>
-                <span className="address-index">CAT</span>
-                <div className="address-block">
-                  <code>{shortHash(c.asset_id)}</code>
-                  <span className="muted small">
-                    {c.unspent_coin_count} coin{c.unspent_coin_count === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <span className="small ok">
-                  {mojosToCatUnits(c.total_unspent_mojos)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {fundedAddresses.length > 0 && (
-        <>
-          <h3>XCH Holdings</h3>
-          <ul className="address-list">
-            {fundedAddresses.map((a) => (
-              <li key={a.index}>
-                <span className="address-index">#{a.index}</span>
-                <code>{a.address}</code>
-                <span className="small ok">
-                  {mojosToXch(a.unspent_mojos)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
+      {nftCount > 0 && (
+        <p className="muted small">
+          You hold {nftCount} NFT{nftCount === 1 ? "" : "s"}. See the NFTs tab.
+        </p>
       )}
 
       {balanceError && <p className="error">{balanceError}</p>}
       <button className="secondary" onClick={onRefresh}>
-        Refresh balance
+        Refresh
       </button>
       <p className="muted small">
-        Balances are read live from coinset.org. CATs discovered by hint matching.
+        Assets are read live from coinset.org. CAT metadata from dexie.space.
       </p>
     </div>
   );
+}
+
+function NftsTab({ wallet }: { wallet: StoredWallet }) {
+  const [snapshot, setSnapshot] = useState<CoinSnapshot | null>(null);
+  const [selected, setSelected] = useState<NftView | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const s = await getCoinSnapshot(wallet.fingerprint);
+        if (!cancelled) setSnapshot(s);
+      } catch {
+        // best-effort
+      }
+    };
+    void refresh();
+    const id = setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [wallet.fingerprint]);
+
+  const nfts = snapshot?.nfts
+    ? Object.values(snapshot.nfts).filter((n) => !n.spent)
+    : [];
+
+  if (selected) {
+    return <NftDetail nft={selected} onBack={() => setSelected(null)} />;
+  }
+
+  return (
+    <div className="tab-body">
+      {nfts.length === 0 ? (
+        <p className="muted">
+          No NFTs detected yet. They show up here as they arrive at one of your
+          derived addresses.
+        </p>
+      ) : (
+        <div className="nft-grid">
+          {nfts.map((n) => {
+            const imgSrc = pickNftImage(n);
+            return (
+              <button
+                key={n.launcher_id}
+                className="nft-card"
+                onClick={() => setSelected(n)}
+              >
+                {imgSrc ? (
+                  <img
+                    src={imgSrc}
+                    alt={n.launcher_id}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="nft-placeholder">NFT</div>
+                )}
+                <div className="nft-caption" title={n.launcher_id}>
+                  #{(n.metadata.edition_number ?? 1).toString()}
+                  {n.metadata.edition_total && n.metadata.edition_total > 1 ? (
+                    <span className="muted">/{n.metadata.edition_total}</span>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NftDetail({ nft, onBack }: { nft: NftView; onBack: () => void }) {
+  const imgSrc = pickNftImage(nft);
+  return (
+    <div className="tab-body">
+      <button className="ghost" onClick={onBack}>
+        ← Back to NFTs
+      </button>
+      {imgSrc && (
+        <div className="nft-detail-image">
+          <img src={imgSrc} alt={nft.launcher_id} />
+        </div>
+      )}
+      <ul className="status-list">
+        <li>
+          <span className="muted">launcher</span>
+          <code title={nft.launcher_id}>{shortHash(nft.launcher_id)}</code>
+        </li>
+        {nft.metadata.edition_total ? (
+          <li>
+            <span className="muted">edition</span>
+            <span>
+              {nft.metadata.edition_number ?? 1} / {nft.metadata.edition_total}
+            </span>
+          </li>
+        ) : null}
+        <li>
+          <span className="muted">royalty</span>
+          <span>{(nft.royalty_basis_points / 100).toFixed(2)}%</span>
+        </li>
+        {nft.current_owner_did && (
+          <li>
+            <span className="muted">DID</span>
+            <code title={nft.current_owner_did}>{shortHash(nft.current_owner_did)}</code>
+          </li>
+        )}
+      </ul>
+      <details>
+        <summary>URIs</summary>
+        <div className="result">
+          {(nft.metadata.data_uris ?? []).map((u) => (
+            <div key={u}>
+              <span className="muted">data</span>
+              <code>{u}</code>
+            </div>
+          ))}
+          {(nft.metadata.metadata_uris ?? []).map((u) => (
+            <div key={u}>
+              <span className="muted">metadata</span>
+              <code>{u}</code>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function normalizeId(id: string): string {
+  return id.toLowerCase().replace(/^0x/, "");
+}
+
+function formatCatAmount(mojos: string, decimals: number): string {
+  try {
+    const m = BigInt(mojos);
+    const scale = 10n ** BigInt(decimals);
+    const whole = m / scale;
+    const frac = m % scale;
+    if (frac === 0n) return whole.toString();
+    const fracStr = frac
+      .toString()
+      .padStart(decimals, "0")
+      .replace(/0+$/, "");
+    return `${whole}.${fracStr}`;
+  } catch {
+    return mojos;
+  }
+}
+
+function pickNftImage(nft: NftView): string | null {
+  const list = nft.metadata.data_uris ?? [];
+  for (const u of list) {
+    if (typeof u === "string" && u.length > 0) {
+      // Replace ipfs:// with a public gateway
+      if (u.startsWith("ipfs://")) {
+        return `https://ipfs.io/ipfs/${u.slice("ipfs://".length)}`;
+      }
+      return u;
+    }
+  }
+  return null;
 }
 
 function shortHash(hex: string): string {

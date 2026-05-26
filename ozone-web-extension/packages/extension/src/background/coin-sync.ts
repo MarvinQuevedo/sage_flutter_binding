@@ -19,9 +19,11 @@
 import { callEngine } from "./engine.js";
 import {
   type CoinRecord,
+  type NftView,
   readCoinStore,
   writeCoinStore,
 } from "./coin-store.js";
+import { resolveCatMetadata } from "./dexie.js";
 
 const DERIVE_COUNT = 50;
 const REORG_WINDOW = 32;
@@ -199,8 +201,7 @@ export async function tickCoinSync(): Promise<void> {
       }
     }
 
-    // 6. Discover CATs by hint matching against our inner puzzle hashes.
-    //    This is best-effort — we don't fail the whole tick on a CAT error.
+    // 6a. Discover CATs by hint matching. Best-effort.
     if (Date.now() < deadline) {
       try {
         const catRes = await callEngine<{
@@ -233,8 +234,45 @@ export async function tickCoinSync(): Promise<void> {
         }
         store.cats = catsMap;
         store.cats_synced_at = Date.now();
+
+        // 6b. Resolve Dexie metadata for any CATs we found. Cached in
+        //     chrome.storage.local["dexie.cats"], TTL 12h.
+        const assetIds = Object.keys(catsMap);
+        if (assetIds.length > 0) {
+          void resolveCatMetadata(assetIds).catch(() => {});
+        }
       } catch (err) {
         console.warn("[Ozone] CAT scan failed:", (err as Error).message);
+      }
+    }
+
+    // 6c. NFT scan, same hint-matching pattern.
+    if (Date.now() < deadline) {
+      try {
+        const nftRes = await callEngine<{
+          nfts: NftView[];
+        }>("scan_nfts", {
+          master_public_key: masterPk,
+          start: 0,
+          count: DERIVE_COUNT,
+          testnet: false,
+          endpoint: "mainnet",
+        });
+        const nftsMap: Record<string, NftView> = {};
+        for (const n of nftRes.nfts) {
+          // Keep the most recent (unspent) version per launcher_id
+          const existing = nftsMap[n.launcher_id];
+          if (
+            !existing ||
+            n.confirmed_block_index >= existing.confirmed_block_index
+          ) {
+            nftsMap[n.launcher_id] = n;
+          }
+        }
+        store.nfts = nftsMap;
+        store.nfts_synced_at = Date.now();
+      } catch (err) {
+        console.warn("[Ozone] NFT scan failed:", (err as Error).message);
       }
     }
 
