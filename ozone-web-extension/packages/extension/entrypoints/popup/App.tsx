@@ -242,17 +242,17 @@ function HomeScreen({
   const [address, setAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Sign-message widget state
+  const [signMessage, setSignMessage] = useState<string>("hello world");
+  const [signature, setSignature] = useState<string | null>(null);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [signing, setSigning] = useState(false);
+
   useEffect(() => {
     void (async () => {
       try {
-        // For now derive locally without the unlocked SK — uses the keychain
-        // blob's master_pk path. Once the unlock holds the SK in memory this
-        // method will be redundant.
         const res = await callEngine<{ address: string }>("derive_address", {
-          // dev placeholder: use a known mnemonic. In the real flow this comes
-          // from the unlocked SK held by the engine.
-          mnemonic:
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+          fingerprint: wallet.fingerprint,
           index: 0,
           testnet: false,
         });
@@ -261,7 +261,35 @@ function HomeScreen({
         setError((err as Error).message);
       }
     })();
-  }, []);
+  }, [wallet.fingerprint]);
+
+  const onSign = async () => {
+    setSigning(true);
+    setSignature(null);
+    setSignError(null);
+    try {
+      const messageHex = toHex(signMessage);
+      const res = await callEngine<{ signature: string; public_key: string }>("sign_message", {
+        fingerprint: wallet.fingerprint,
+        index: 0,
+        message: messageHex,
+      });
+      setSignature(res.signature);
+    } catch (err) {
+      setSignError((err as Error).message);
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  const lock = async () => {
+    try {
+      await callEngine("lock_keychain", { fingerprint: wallet.fingerprint });
+    } catch {
+      // best-effort: even if the engine call fails, lock the UI anyway
+    }
+    await onLock();
+  };
 
   return (
     <section className="screen">
@@ -278,13 +306,41 @@ function HomeScreen({
         </div>
       )}
       {error && <p className="error">{error}</p>}
+
       <nav className="actions">
         <button disabled>Send</button>
         <button disabled>Receive</button>
       </nav>
-      <button onClick={() => void onLock()} className="lock-btn">
+
+      <details className="dev-section">
+        <summary>Dev: sign a message</summary>
+        <input
+          type="text"
+          value={signMessage}
+          onChange={(e) => setSignMessage(e.target.value)}
+        />
+        <button onClick={onSign} disabled={signing || !signMessage}>
+          {signing ? "Signing…" : "Sign with index 0"}
+        </button>
+        {signature && (
+          <div className="result">
+            <div>
+              <span className="muted">signature</span>
+              <code>{signature}</code>
+            </div>
+          </div>
+        )}
+        {signError && <p className="error">{signError}</p>}
+      </details>
+
+      <button onClick={() => void lock()} className="lock-btn">
         Lock
       </button>
     </section>
   );
+}
+
+function toHex(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }

@@ -4,7 +4,6 @@
   "description": "WASM bindings for the Sage wallet engine.",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "private": true,
   "files": [
     "sage_wasm_bg.wasm",
     "sage_wasm.js",
@@ -14,5 +13,6 @@
   "types": "sage_wasm.d.ts",
   "sideEffects": [
     "./snippets/*"
-  ]
+  ],
+  "private": true
 }

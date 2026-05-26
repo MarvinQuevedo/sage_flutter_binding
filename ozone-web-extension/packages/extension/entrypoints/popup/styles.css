@@ -124,6 +124,35 @@ textarea {
   border: 1px solid color-mix(in srgb, canvastext 15%, transparent);
 }
 
+.dev-section {
+  margin-top: 8px;
+  border-top: 1px dashed color-mix(in srgb, canvastext 12%, transparent);
+  padding-top: 12px;
+  font-size: 12px;
+}
+
+.dev-section summary {
+  cursor: pointer;
+  color: color-mix(in srgb, canvastext 55%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: none;
+}
+
+.dev-section input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid color-mix(in srgb, canvastext 20%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, canvas 90%, canvastext 3%);
+  color: canvastext;
+}
+
+.dev-section button {
+  margin-top: 8px;
+}
+
 .ozone-popup {
   display: flex;
   flex-direction: column;
