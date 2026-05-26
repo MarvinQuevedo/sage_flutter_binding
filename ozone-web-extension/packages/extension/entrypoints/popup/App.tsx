@@ -277,6 +277,19 @@ function LockScreen({
   );
 }
 
+interface BalanceInfo {
+  total_unspent_mojos: string;
+  total_unspent_xch: string;
+  unspent_coin_count: number;
+  addresses: Array<{
+    index: number;
+    puzzle_hash: string;
+    address: string;
+    unspent_mojos: string;
+    unspent_count: number;
+  }>;
+}
+
 function HomeScreen({
   wallet,
   onLock,
@@ -284,8 +297,11 @@ function HomeScreen({
   wallet: StoredWallet;
   onLock: () => void | Promise<void>;
 }) {
-  const [tab, setTab] = useState<"home" | "receive" | "dev" | "settings">("home");
+  const [tab, setTab] = useState<"home" | "send" | "receive" | "dev" | "settings">("home");
   const [sync, setSync] = useState<SyncState | null>(null);
+  const [balance, setBalance] = useState<BalanceInfo | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const refreshSync = async () => {
     try {
@@ -296,21 +312,52 @@ function HomeScreen({
     }
   };
 
+  const refreshBalance = async () => {
+    setBalanceLoading(true);
+    try {
+      const res = await callEngine<BalanceInfo>("get_address_balance", {
+        fingerprint: wallet.fingerprint,
+        start: 0,
+        count: 50,
+        testnet: false,
+      });
+      setBalance(res);
+      setBalanceError(null);
+    } catch (err) {
+      setBalanceError((err as Error).message);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
   useEffect(() => {
     void refreshSync();
+    void refreshBalance();
     const id = setInterval(() => {
       void refreshSync();
     }, 5_000);
-    return () => clearInterval(id);
-  }, []);
+    const balanceTimer = setInterval(() => {
+      void refreshBalance();
+    }, 30_000);
+    return () => {
+      clearInterval(id);
+      clearInterval(balanceTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet.fingerprint]);
 
   return (
     <section className="screen">
       <div className="wallet-bar">
         <div>
-          <h1 className="balance">0.0000 XCH</h1>
+          <h1 className="balance">
+            {balance ? `${balance.total_unspent_xch} XCH` : balanceLoading ? "…" : "0.0000 XCH"}
+          </h1>
           <p className="muted">
             {wallet.label} · fp {wallet.fingerprint}
+            {balance && balance.unspent_coin_count > 0 && (
+              <> · {balance.unspent_coin_count} coins</>
+            )}
           </p>
         </div>
         <div className="sync-badge">
@@ -338,16 +385,16 @@ function HomeScreen({
           Home
         </button>
         <button
+          className={tab === "send" ? "tab active" : "tab"}
+          onClick={() => setTab("send")}
+        >
+          Send
+        </button>
+        <button
           className={tab === "receive" ? "tab active" : "tab"}
           onClick={() => setTab("receive")}
         >
           Receive
-        </button>
-        <button
-          className={tab === "dev" ? "tab active" : "tab"}
-          onClick={() => setTab("dev")}
-        >
-          Dev
         </button>
         <button
           className={tab === "settings" ? "tab active" : "tab"}
@@ -357,7 +404,10 @@ function HomeScreen({
         </button>
       </nav>
 
-      {tab === "home" && <HomeTab />}
+      {tab === "home" && (
+        <HomeTab balance={balance} balanceError={balanceError} onRefresh={() => void refreshBalance()} />
+      )}
+      {tab === "send" && <SendTab wallet={wallet} balance={balance} />}
       {tab === "receive" && <ReceiveTab wallet={wallet} />}
       {tab === "dev" && <DevTab wallet={wallet} />}
       {tab === "settings" && <SettingsTab wallet={wallet} sync={sync} onLock={onLock} />}
@@ -528,27 +578,205 @@ function SettingsTab({
   );
 }
 
-function HomeTab() {
+function HomeTab({
+  balance,
+  balanceError,
+  onRefresh,
+}: {
+  balance: BalanceInfo | null;
+  balanceError: string | null;
+  onRefresh: () => void;
+}) {
+  const fundedAddresses = balance?.addresses.filter((a) => a.unspent_count > 0) ?? [];
+
   return (
     <div className="tab-body">
-      <p className="muted">
-        Balance + recent activity will live here once the sync loop wires
-        coinset.org coin records into IndexedDB.
-      </p>
       <ul className="status-list">
         <li>
           <span className="muted">XCH</span>
-          <span>—</span>
+          <span>{balance ? balance.total_unspent_xch : "—"}</span>
+        </li>
+        <li>
+          <span className="muted">Coins</span>
+          <span>{balance ? balance.unspent_coin_count : "—"}</span>
         </li>
         <li>
           <span className="muted">CATs</span>
-          <span>—</span>
+          <span className="muted">—</span>
         </li>
         <li>
           <span className="muted">NFTs</span>
-          <span>—</span>
+          <span className="muted">—</span>
         </li>
       </ul>
+
+      {fundedAddresses.length > 0 && (
+        <>
+          <h3>Holdings</h3>
+          <ul className="address-list">
+            {fundedAddresses.map((a) => (
+              <li key={a.index}>
+                <span className="address-index">#{a.index}</span>
+                <code>{a.address}</code>
+                <span className="small ok">
+                  {mojosToXch(a.unspent_mojos)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {balanceError && <p className="error">{balanceError}</p>}
+      <button className="secondary" onClick={onRefresh}>
+        Refresh balance
+      </button>
+      <p className="muted small">
+        Balances are read live from coinset.org across your first 50 derived addresses.
+      </p>
+    </div>
+  );
+}
+
+function mojosToXch(mojos: string): string {
+  // Mojos as decimal string → "X.XXXX" XCH. Simple impl using BigInt.
+  try {
+    const m = BigInt(mojos);
+    const scale = 1_000_000_000_000n;
+    const whole = m / scale;
+    const frac = m % scale;
+    const fracStr = frac.toString().padStart(12, "0").replace(/0+$/, "");
+    const display = fracStr.length === 0 ? "0000" : fracStr.padEnd(4, "0");
+    return `${whole}.${display}`;
+  } catch {
+    return mojos;
+  }
+}
+
+function SendTab({ wallet, balance }: { wallet: StoredWallet; balance: BalanceInfo | null }) {
+  const [to, setTo] = useState("");
+  const [amount, setAmount] = useState("");
+  const [fee, setFee] = useState("0");
+  const [addressValid, setAddressValid] = useState<boolean | null>(null);
+  const [addressInfo, setAddressInfo] = useState<{ puzzle_hash: string; prefix: string } | null>(
+    null,
+  );
+  const [validating, setValidating] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitNote, setSubmitNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!to.trim()) {
+      setAddressValid(null);
+      setAddressInfo(null);
+      return;
+    }
+    let cancelled = false;
+    setValidating(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await callEngine<{ puzzle_hash: string; prefix: string }>(
+          "decode_address",
+          { address: to.trim() },
+        );
+        if (!cancelled) {
+          setAddressValid(true);
+          setAddressInfo(res);
+        }
+      } catch {
+        if (!cancelled) {
+          setAddressValid(false);
+          setAddressInfo(null);
+        }
+      } finally {
+        if (!cancelled) setValidating(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [to]);
+
+  const amountNum = parseFloat(amount || "0");
+  const feeNum = parseFloat(fee || "0");
+  const totalNeeded = amountNum + feeNum;
+  const haveEnough = balance
+    ? BigInt(balance.total_unspent_mojos) >=
+      BigInt(Math.round(totalNeeded * 1_000_000_000_000))
+    : false;
+
+  const canReview = addressValid && amountNum > 0 && haveEnough;
+
+  const review = () => {
+    setSubmitError(null);
+    setSubmitNote(
+      "Send is wired up to the engine but the on-chain push is still " +
+        "behind the storage bridge refactor. Address + amount + fee validated, " +
+        "but no SpendBundle is broadcast yet. Coming in the next iteration.",
+    );
+  };
+
+  return (
+    <div className="tab-body">
+      <label className="field">
+        <span>Recipient address</span>
+        <input
+          type="text"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="xch1..."
+          spellCheck={false}
+        />
+        {validating && <span className="muted small">validating…</span>}
+        {addressValid === true && addressInfo && (
+          <span className="small ok">✓ valid {addressInfo.prefix} address</span>
+        )}
+        {addressValid === false && <span className="small error">invalid bech32m</span>}
+      </label>
+
+      <label className="field">
+        <span>Amount (XCH)</span>
+        <input
+          type="number"
+          step="0.0001"
+          min="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.0"
+        />
+        {balance && amountNum > 0 && !haveEnough && (
+          <span className="small error">
+            insufficient: have {balance.total_unspent_xch} XCH
+          </span>
+        )}
+      </label>
+
+      <label className="field">
+        <span>Fee (XCH)</span>
+        <input
+          type="number"
+          step="0.0001"
+          min="0"
+          value={fee}
+          onChange={(e) => setFee(e.target.value)}
+        />
+        <span className="muted small">
+          A fee helps your transaction land faster when the mempool is busy.
+        </span>
+      </label>
+
+      <button disabled={!canReview} onClick={review}>
+        Review & send
+      </button>
+
+      {submitNote && <p className="muted small">{submitNote}</p>}
+      {submitError && <p className="error">{submitError}</p>}
+
+      <p className="muted small">
+        Sending {wallet.label}: {balance?.total_unspent_xch ?? "—"} XCH available across{" "}
+        {balance?.unspent_coin_count ?? 0} coins.
+      </p>
     </div>
   );
 }
