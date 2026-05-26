@@ -7,12 +7,17 @@
 
 import { callEngine } from "./engine.js";
 import { setActiveWallet } from "./engine.js";
+import { clearCoinStore, readCoinStore, totalUnspentMojos, unspentCoinCount } from "./coin-store.js";
+import { tickCoinSync } from "./coin-sync.js";
 import { readSyncState } from "./sync-loop.js";
 
 export type PopupRpcMessage =
   | { from: "popup"; kind: "engine"; method: string; params: unknown }
   | { from: "popup"; kind: "set-active-wallet"; walletId: string | null }
-  | { from: "popup"; kind: "get-sync-state" };
+  | { from: "popup"; kind: "get-sync-state" }
+  | { from: "popup"; kind: "get-coin-store"; fingerprint: number }
+  | { from: "popup"; kind: "clear-coin-store"; fingerprint: number }
+  | { from: "popup"; kind: "force-coin-sync" };
 
 export type PopupRpcResponse =
   | { ok: true; value: unknown }
@@ -45,6 +50,26 @@ export async function handlePopupMessage(
       case "get-sync-state": {
         const state = await readSyncState();
         return { ok: true, value: state };
+      }
+      case "get-coin-store": {
+        const store = await readCoinStore(msg.fingerprint);
+        return {
+          ok: true,
+          value: {
+            last_synced_height: store.last_synced_height,
+            unspent_mojos: totalUnspentMojos(store),
+            unspent_count: unspentCoinCount(store),
+            coins: store.coins,
+          },
+        };
+      }
+      case "clear-coin-store": {
+        await clearCoinStore(msg.fingerprint);
+        return { ok: true, value: null };
+      }
+      case "force-coin-sync": {
+        await tickCoinSync();
+        return { ok: true, value: null };
       }
     }
   } catch (err) {

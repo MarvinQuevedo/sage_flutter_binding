@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { callEngine, getSyncState, setActiveWallet } from "../../src/popup/engine-client";
 import type { SyncState } from "../../src/popup/engine-client";
 import {
+  getDerivationState,
+  setActiveIndex,
+  setLabel,
+} from "../../src/popup/derivation-store";
+import { Qr } from "../../src/popup/qr";
+import {
   getActiveFingerprint,
   listWallets,
   removeWallet,
@@ -790,53 +796,193 @@ interface DerivedAddress {
 
 function ReceiveTab({ wallet }: { wallet: StoredWallet }) {
   const [addresses, setAddresses] = useState<DerivedAddress[]>([]);
+  const [active, setActive] = useState<number>(0);
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [editingLabel, setEditingLabel] = useState<string>("");
+  const [editing, setEditing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
+  // Load persisted state + derive a chunk of addresses
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
+      const state = await getDerivationState(wallet.fingerprint);
+      if (cancelled) return;
+      setActive(state.activeIndex);
+      setLabels(state.labels);
       try {
+        // Derive enough to cover the selected index + reasonable browsing range
+        const count = Math.max(20, state.activeIndex + 10);
         const res = await callEngine<{ addresses: DerivedAddress[] }>("derive_addresses", {
           fingerprint: wallet.fingerprint,
           start: 0,
-          count: 10,
+          count,
           testnet: false,
         });
-        setAddresses(res.addresses);
+        if (!cancelled) setAddresses(res.addresses);
       } catch (err) {
-        setError((err as Error).message);
+        if (!cancelled) setError((err as Error).message);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [wallet.fingerprint]);
 
-  const copy = async (addr: DerivedAddress) => {
+  const activeAddr = addresses.find((a) => a.index === active) ?? addresses[0];
+
+  const copy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(addr.address);
-      setCopiedIndex(addr.index);
-      setTimeout(() => setCopiedIndex(null), 1500);
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       // clipboard may be denied
     }
   };
 
+  const nextAddress = async () => {
+    const next = (activeAddr?.index ?? -1) + 1;
+    // ensure we have it derived
+    if (next >= addresses.length) {
+      try {
+        const res = await callEngine<{ addresses: DerivedAddress[] }>("derive_addresses", {
+          fingerprint: wallet.fingerprint,
+          start: addresses.length,
+          count: 10,
+          testnet: false,
+        });
+        setAddresses([...addresses, ...res.addresses]);
+      } catch (err) {
+        setError((err as Error).message);
+        return;
+      }
+    }
+    setActive(next);
+    await setActiveIndex(wallet.fingerprint, next);
+  };
+
+  const pickAddress = async (idx: number) => {
+    setActive(idx);
+    await setActiveIndex(wallet.fingerprint, idx);
+    setShowAll(false);
+  };
+
+  const startEditLabel = () => {
+    setEditingLabel(labels[String(active)] ?? "");
+    setEditing(true);
+  };
+
+  const saveEditLabel = async () => {
+    await setLabel(wallet.fingerprint, active, editingLabel);
+    const nextLabels = { ...labels };
+    if (editingLabel.trim()) nextLabels[String(active)] = editingLabel.trim();
+    else delete nextLabels[String(active)];
+    setLabels(nextLabels);
+    setEditing(false);
+  };
+
+  if (!activeAddr) {
+    return (
+      <div className="tab-body">
+        {error ? <p className="error">{error}</p> : <p className="muted">Deriving…</p>}
+      </div>
+    );
+  }
+
+  const currentLabel = labels[String(active)];
+
+  if (showAll) {
+    return (
+      <div className="tab-body">
+        <div className="receive-list-header">
+          <button className="ghost" onClick={() => setShowAll(false)}>
+            ← Back
+          </button>
+          <h3>Your addresses</h3>
+        </div>
+        <ul className="address-list">
+          {addresses.map((a) => {
+            const lbl = labels[String(a.index)];
+            return (
+              <li
+                key={a.index}
+                className={a.index === active ? "active" : ""}
+                onClick={() => void pickAddress(a.index)}
+                style={{ cursor: "pointer" }}
+              >
+                <span className="address-index">#{a.index}</span>
+                <div className="address-block">
+                  {lbl && <div className="address-label">{lbl}</div>}
+                  <code>{a.address}</code>
+                </div>
+                <span className="small ok">{a.index === active ? "✓" : ""}</span>
+              </li>
+            );
+          })}
+        </ul>
+        <button className="secondary" onClick={() => void nextAddress()}>
+          Generate next address
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="tab-body">
-      <p className="muted">
-        Send XCH or CATs to any of these addresses. They all belong to your
-        wallet — you can rotate freely.
-      </p>
+      <div className="receive-card">
+        <div className="receive-card-header">
+          <div>
+            {currentLabel && !editing ? (
+              <div className="address-label" onClick={startEditLabel} style={{ cursor: "pointer" }}>
+                {currentLabel} <span className="muted small">edit</span>
+              </div>
+            ) : !editing ? (
+              <button className="ghost" onClick={startEditLabel}>
+                + add label
+              </button>
+            ) : null}
+            {editing && (
+              <div className="row">
+                <input
+                  type="text"
+                  value={editingLabel}
+                  autoFocus
+                  placeholder="Label (e.g. Exchange)"
+                  onChange={(e) => setEditingLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void saveEditLabel();
+                    if (e.key === "Escape") setEditing(false);
+                  }}
+                />
+                <button onClick={() => void saveEditLabel()}>OK</button>
+              </div>
+            )}
+          </div>
+          <span className="address-index">#{active}</span>
+        </div>
+
+        <div className="qr-wrap">
+          <Qr data={activeAddr.address} size={196} />
+        </div>
+
+        <code className="receive-address">{activeAddr.address}</code>
+
+        <div className="row">
+          <button onClick={() => void copy(activeAddr.address)}>
+            {copied ? "Copied ✓" : "Copy address"}
+          </button>
+          <button className="secondary" onClick={() => void nextAddress()}>
+            New address
+          </button>
+        </div>
+        <button className="ghost" onClick={() => setShowAll(true)}>
+          See all derived addresses
+        </button>
+      </div>
       {error && <p className="error">{error}</p>}
-      <ul className="address-list">
-        {addresses.map((a) => (
-          <li key={a.index}>
-            <span className="address-index">#{a.index}</span>
-            <code>{a.address}</code>
-            <button onClick={() => void copy(a)}>
-              {copiedIndex === a.index ? "Copied" : "Copy"}
-            </button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

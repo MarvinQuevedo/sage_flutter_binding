@@ -48,3 +48,39 @@ export async function getSyncState(): Promise<SyncState | null> {
   }
   return (res.value as SyncState | null) ?? null;
 }
+
+export interface CoinSnapshot {
+  last_synced_height: number;
+  unspent_mojos: string;
+  unspent_count: number;
+  coins: Record<string, {
+    coin_id: string;
+    parent_coin_info: string;
+    puzzle_hash: string;
+    amount: string;
+    confirmed_block_index: number;
+    spent: boolean;
+    spent_block_index: number;
+    timestamp: number;
+    hint?: string;
+  }>;
+}
+
+export async function getCoinSnapshot(fingerprint: number): Promise<CoinSnapshot> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "get-coin-store", fingerprint };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) throw new Error(res.error.message);
+  return res.value as CoinSnapshot;
+}
+
+export async function clearCoinSnapshot(fingerprint: number): Promise<void> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "clear-coin-store", fingerprint };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) throw new Error(res.error.message);
+}
+
+export async function forceCoinSync(): Promise<void> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "force-coin-sync" };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) throw new Error(res.error.message);
+}

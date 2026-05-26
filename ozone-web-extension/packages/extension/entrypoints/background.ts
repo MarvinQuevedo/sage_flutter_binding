@@ -8,6 +8,7 @@ import { defineBackground } from "wxt/utils/define-background";
 import { Errors } from "@ozone/goby-provider/errors";
 import type { ChiaMethod } from "@ozone/goby-provider/types";
 import { handleApprovalMessage, isApprovalMessage } from "../src/background/approval";
+import { tickCoinSync } from "../src/background/coin-sync";
 import { setActiveWallet } from "../src/background/engine";
 import { handlePopupMessage, isPopupMessage } from "../src/background/popup-rpc";
 import { handleRpc } from "../src/background/rpc-router";
@@ -29,11 +30,14 @@ export default defineBackground(() => {
 
   // Keep-alive + periodic sync trigger
   chrome.alarms.create("sync", { periodInMinutes: 0.5 });
+  chrome.alarms.create("coin-sync", { periodInMinutes: 0.5 });
   chrome.alarms.create("keepalive", { periodInMinutes: 0.25 });
 
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "sync") {
       void startSyncLoop();
+    } else if (alarm.name === "coin-sync") {
+      void tickCoinSync();
     }
   });
 
