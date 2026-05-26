@@ -955,60 +955,108 @@ Esto es **donde Goby vs nuestra extensión se diferencia en valor** — un buen 
 - ✅ **API de coinset.org** — todos los endpoints verificados live, CORS abierto, sin auth, schemas listados
 - ✅ **Goby protocol spec** — CHIP-0002 + ext, Sage WalletConnect commands sirven de referencia 1:1
 - ✅ **Diferencias P2P vs REST** — gaps identificados, todos manejables con polling + cross-check
+- ✅ **WASM viabilidad** — probada con `wasm-probe/`: chia-sdk-coinset compila a wasm32 (1.1 MB .wasm)
+- ✅ **chia-wallet-sdk fork** — `peer-client` feature default-on; wasm32 hace `--no-default-features`. Branch local `feat/peer-client-feature` en `vendor/chia-wallet-sdk/`
+- ✅ **SyncBackend trait** — landed con `PeerBackend` (native) y `CoinsetBackend` (scaffold con todos los read endpoints conectados al `CoinsetClient` upstream)
+- ✅ **sage workspace wasm-ready** — workspace dep usa `default-features = false`; `peer-client` se activa local en sage / sage-rpc / sage-wallet (solo native); sage-assets gateó `image`/`webp` a native
+- ✅ **Native build sigue intacto** — `cargo check --workspace` PASS
 
-### 11.2 En progreso (agentes background)
+### 11.2 Único bloqueador remanente para `sage-wallet` wasm32
 
-- ⏳ **`chia-wallet-sdk` WASM viability** — agente `a1682fbf07963b67e`
-  - Verifica si compila a `wasm32-unknown-unknown`
-  - Si no, lista patches necesarios
-  - Output esperado en `/private/tmp/claude-501/.../tasks/a1682fbf07963b67e.output`
+**`libsqlite3-sys`** (transitivo de `sage-database` → `sqlx` con feature `sqlite`). El compile falla con `'stdio.h' file not found` porque wasm32-unknown-unknown no tiene libc.
 
-- ⏳ **chia-blockchain wallet protocol deep-dive** — agente `aa92e16e0fa0c7bb0`
-  - State machine de sync upstream
-  - Hint mechanism details
-  - NFT/DID puzzle detection
-  - Output esperado en `/private/tmp/claude-501/.../tasks/aa92e16e0fa0c7bb0.output`
+Fix planeado (Task #14, Storage trait refactor — sección 11.3).
 
-**Continuación en móvil:** cuando estos agentes completen, sus hallazgos se anexan a este documento en sección 13.
+### 11.3 Storage trait refactor — el último gran paso
 
-### 11.3 Pending de investigar (post-WASM-validation)
+Cómo va a quedar:
 
-- Si `chia-wallet-sdk` no compila: ¿qué exactamente hay que parchear? (tokio features, rustls native vs ring, etc.)
-- ¿`sqlx` puede usarse con backend custom (no sqlite) en WASM? — probablemente no, mejor abstraer
-- Bundle size real medido tras primer wasm-pack build
-- Best-practices de Chrome Web Store review para extensiones cripto (KYC, age gating?)
+```
+sage-database/
+├── Cargo.toml          # sqlx ahora opcional detrás de feature "sqlite" (default-on para native)
+├── src/
+│   ├── storage.rs      # trait Storage con TODOS los métodos del Database struct actual
+│   ├── sqlite/         # impl SqliteStorage detrás de #[cfg(feature = "sqlite")]
+│   │   ├── mod.rs
+│   │   └── ... (código actual, movido)
+│   └── lib.rs          # pub use storage::Storage; #[cfg(...)] pub use sqlite::SqliteStorage;
+```
+
+Consumidores:
+- `sage-wallet` → cambia de `Database` concreto a `Arc<dyn Storage>` (gen párametro o trait obj)
+- `sage` (native) → instancia `SqliteStorage` igual que hoy
+- Browser extension → `JsCallbackStorage` (Rust struct con callbacks a IndexedDB en TS, ya estructurado en `packages/storage-idb/`)
+
+Sub-tareas:
+1. **Extract trait** — listar todos los métodos públicos de `sage_database::Database` y crear el trait. Probablemente ~40-60 métodos.
+2. **Move SQLite impl** — el código actual va detrás del trait. Tests siguen pasando.
+3. **Update sage-wallet** — reemplazar `Database` por trait + bound `T: Storage`. Bastante invasivo pero mecánico.
+4. **Wasm JsCallbackStorage** — Rust struct con métodos que delegan a callbacks JS (uno por cada método del trait). Lado JS en `packages/storage-idb/` ya tiene la estructura.
+
+Estimado: 2-3 sesiones (extract + move + migrate + wasm impl).
+
+### 11.4 Después del Storage refactor
+
+- Crate `sage-wasm` en `vendor/sage/crates/sage-wasm/` con `Sage` engine único (constructor + `request(method, params_json)`)
+- `wasm-pack build` → `packages/wallet-wasm/`
+- Wire del `pnpm dev` end-to-end: extensión carga WASM, IndexedDB callbacks, RPC router invoca `engine.request()`
+- Bundle size real medido tras `wasm-opt -Oz`
+- Best-practices de Chrome Web Store review para extensiones cripto
 
 ---
 
-## 12. Próximos pasos inmediatos
+## 12. Próximos pasos inmediatos (cuando retomes)
 
-Cuando vuelvas a esto:
+**Layout actual:**
+- Worktree: `~/Projects/Ozone/sage-web/` (branch `web/ozone-extension`, no se mergea a main).
+- Sage fork: `vendor/sage/` submodule en branch `web/coinset-sync`.
+- chia-wallet-sdk fork: `vendor/chia-wallet-sdk/` clon local (no submodule aún) en branch `feat/peer-client-feature`.
+- Extension scaffold: `ozone-web-extension/` (también via symlink `~/Projects/Ozone/ozone-web-extension/`).
+- WASM probe: `wasm-probe/` (smoke test que compila — referencia para los siguientes builds).
 
-1. **Ejecutar Fase 0** — probar `cargo check --target wasm32-unknown-unknown` en `chia-wallet-sdk` + reportar.
-2. **Si Fase 0 pasa:** crear `fork/sage-web` (clone xch-dev/sage, set remotes), crear branch `web/coinset-sync`.
-3. **Crear `ozone-extension`** con WXT scaffold + workspace.
-4. **Empezar Parche 1** (`SyncBackend` trait) en el fork.
-
+**Comandos clave (env vars necesarios para wasm32):**
 ```bash
-# Comandos exactos para empezar:
-mkdir -p ~/Projects/Ozone/fork
-cd ~/Projects/Ozone/fork
-git clone https://github.com/xch-dev/sage.git sage-web
-cd sage-web
-git remote add upstream https://github.com/xch-dev/sage.git
-git remote set-url --push upstream DISABLED
-git checkout -b web/coinset-sync
+# Workspace cargo config (en .cargo/config.toml) ya tiene --cfg getrandom_backend
+# Solo hace falta apuntar el C compiler a brew LLVM:
+export CC_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/clang
+export AR_wasm32_unknown_unknown=/usr/local/opt/llvm/bin/llvm-ar
 
-# Verificación WASM:
-cd crates/sage-wallet
-cargo check --target wasm32-unknown-unknown --no-default-features 2>&1 | head -100
+# Validar native sigue OK (debería ser PASS):
+cd ~/Projects/Ozone/sage-web/vendor/sage && cargo check --workspace
 
-# Si OK, scaffold extension:
-cd ~/Projects/Ozone
-pnpm create wxt@latest ozone-extension -- --template react-ts
-cd ozone-extension
-pnpm install
-git init && git add . && git commit -m "chore: WXT scaffold"
+# Validar wasm-probe sigue OK:
+cd ~/Projects/Ozone/sage-web/wasm-probe && cargo build --release --target wasm32-unknown-unknown
+
+# Reproducir el bloqueador actual (libsqlite3-sys):
+cd ~/Projects/Ozone/sage-web/vendor/sage && \
+  cargo check --target wasm32-unknown-unknown -p sage-wallet --features coinset-sync
+```
+
+**Próximo paso a ejecutar (Task #14 — Storage trait):**
+1. Listar todos los métodos públicos de `sage_database::Database` (probablemente vía `grep -rE "^\s+pub (async )?fn" vendor/sage/crates/sage-database/src/`).
+2. Crear `vendor/sage/crates/sage-database/src/storage.rs` con el trait `Storage` que los enumera.
+3. Mover el código actual del `Database` struct a `vendor/sage/crates/sage-database/src/sqlite/` detrás de `#[cfg(feature = "sqlite")]`.
+4. En `vendor/sage/crates/sage-database/Cargo.toml`:
+   ```toml
+   [features]
+   default = ["sqlite"]
+   sqlite = ["dep:sqlx"]
+
+   [dependencies]
+   sqlx = { workspace = true, features = ["sqlite"], optional = true }
+   ```
+5. Reemplazar usos en `sage-wallet` de `Database` → `Arc<dyn Storage>` (o un genérico `<S: Storage>`).
+6. Verificar native: `cargo check --workspace`.
+7. Verificar wasm32: `cargo check --target wasm32-unknown-unknown -p sage-wallet --features coinset-sync --no-default-features` — debería pasar.
+8. Después: crear `vendor/sage/crates/sage-wasm/` con el engine único + `wasm-pack build`.
+
+**Si necesitas el fork de chia-wallet-sdk en otra máquina:**
+```bash
+cd ~/Projects/Ozone/sage-web/vendor
+git clone https://github.com/xch-dev/chia-wallet-sdk.git
+cd chia-wallet-sdk
+git checkout 0.33.0
+# Aplicar los cambios del commit c9bd65e (que vive en este worktree).
 ```
 
 ---
