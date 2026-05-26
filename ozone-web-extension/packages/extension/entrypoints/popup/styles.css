@@ -10,10 +10,90 @@
 
 body {
   margin: 0;
-  min-width: 360px;
+  min-width: 380px;
   min-height: 600px;
   background: canvas;
   color: canvastext;
+}
+
+.ozone-meta {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: color-mix(in srgb, canvastext 55%, transparent);
+}
+
+.ozone-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.status-list li {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+}
+
+.ok {
+  color: #0a8;
+}
+
+.error {
+  color: #c33;
+  font-size: 12px;
+  margin: 0;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, canvastext 20%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, canvas 90%, canvastext 3%);
+  color: canvastext;
+  resize: vertical;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.result > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  background: color-mix(in srgb, canvas 85%, canvastext 5%);
+  padding: 4px 6px;
+  border-radius: 4px;
 }
 
 .ozone-popup {

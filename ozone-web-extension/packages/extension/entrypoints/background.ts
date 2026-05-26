@@ -8,6 +8,7 @@ import { defineBackground } from "wxt/utils/define-background";
 import { Errors } from "@ozone/goby-provider/errors";
 import type { ChiaMethod } from "@ozone/goby-provider/types";
 import { setActiveWallet } from "../src/background/engine";
+import { handlePopupMessage, isPopupMessage } from "../src/background/popup-rpc";
 import { handleRpc } from "../src/background/rpc-router";
 import { startSyncLoop } from "../src/background/sync-loop";
 import { ensurePermissions, requireConnected } from "../src/background/permissions";
@@ -40,6 +41,13 @@ export default defineBackground(() => {
   });
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    // ── Popup → SW ─────────────────────────────────────────────────────
+    if (isPopupMessage(msg)) {
+      void handlePopupMessage(msg).then(sendResponse);
+      return true;
+    }
+
+    // ── dApp content script → SW ───────────────────────────────────────
     if (!msg || msg.from !== "content") return false;
     const origin = sender.origin ?? msg.origin;
     if (!origin) {

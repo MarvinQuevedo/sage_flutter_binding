@@ -1,0 +1,29 @@
+// Popup-side client for talking to the engine through the service worker.
+//
+// The popup never loads WASM itself — only the SW owns the wallet. Every
+// call goes through chrome.runtime.sendMessage with the `from: "popup"`
+// envelope handled in background/popup-rpc.ts.
+
+import type { PopupRpcMessage, PopupRpcResponse } from "../background/popup-rpc";
+
+export async function callEngine<T = unknown>(
+  method: string,
+  params: unknown = {},
+): Promise<T> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "engine", method, params };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) {
+    const err = new Error(res.error.message) as Error & { code?: number };
+    err.code = res.error.code;
+    throw err;
+  }
+  return res.value as T;
+}
+
+export async function setActiveWallet(walletId: string | null): Promise<void> {
+  const msg: PopupRpcMessage = { from: "popup", kind: "set-active-wallet", walletId };
+  const res = (await chrome.runtime.sendMessage(msg)) as PopupRpcResponse;
+  if (!res.ok) {
+    throw new Error(res.error.message);
+  }
+}
