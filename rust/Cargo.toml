@@ -39,3 +39,8 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "unwind"  # flutter_rust_bridge converts Rust panics into Dart errors
+
+# macOS 27 rejects proc-macro dylibs stripped by affected Rust toolchains.
+# Keep host build dependencies loadable while stripping the Android library.
+[profile.release.build-override]
+strip = "none"
